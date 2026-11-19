@@ -13,8 +13,11 @@ def present(fact, shown, _expanded=None):
     if fact in shown:
         return True
     if _expanded is None and "{" in shown:
-        from lean.filt import expand_braces
-        return present(fact, shown + "\n" + expand_braces(shown), _expanded=True)
+        from lean.filt import expand_braces, expand_paths
+        extra = expand_braces(shown)
+        if re.match(r"^.*\(\d+(?: paths)?\):", shown):
+            extra += "\n" + "\n".join(expand_paths(shown))
+        return present(fact, shown + "\n" + extra, _expanded=True)
     m = re.match(r"^([\w./-]+\.\w+):(\d+)$", fact)
     if m:   # file:line shown grouped by file:  "path\n  line:col …"
         path, line = m.groups()

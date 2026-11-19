@@ -255,7 +255,14 @@ C = {
     "main.c": "#include <stdio.h>\n#include \"calc.h\"\nint main(void) { printf(\"%d\\n\", add(1, 2)); return 0; }\n",
 }
 
-PROJECTS = {"py": PY, "vitest": VITEST, "jest": JEST, "go": GO, "rust": RUST, "maven": MAVEN, "ruby": RUBY, "c": C}
+GRADLE = {
+    "settings.gradle": "rootProject.name = 'demo'\n",
+    "build.gradle": "plugins { id 'java' }\nrepositories { mavenCentral() }\ndependencies {\n  testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'\n  testRuntimeOnly 'org.junit.platform:junit-platform-launcher'\n}\ntest { useJUnitPlatform() }\n",
+    "src/main/java/demo/Calc.java": MAVEN["src/main/java/demo/Calc.java"],
+    "src/test/java/demo/CalcTest.java": MAVEN["src/test/java/demo/CalcTest.java"],
+}
+
+PROJECTS = {"gradle": GRADLE, "py": PY, "vitest": VITEST, "jest": JEST, "go": GO, "rust": RUST, "maven": MAVEN, "ruby": RUBY, "c": C}
 
 # one-time dependency setup per project (results are shared across scenarios via symlink / cache)
 SETUP = {

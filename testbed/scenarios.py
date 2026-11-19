@@ -124,6 +124,7 @@ SCENARIOS = [
     S("maven-fail", "maven", "mvn -B test", facts=["CalcTest.big", "CalcTest.name", "expected: <7> but was: <8>", "NullPointerException", "Calc.java:9"]),
     S("maven-compile-error", "maven", "mvn -B -q compile", files={"src/main/java/demo/Calc.java": "package demo;\npublic class Calc {\n    public static int add(int a, int b) { return a + b + c; }\n}\n"},
       facts=["Calc.java", "cannot find symbol"]),
+    S("gradle-fail", "gradle", "gradle test --no-daemon -q", facts=["CalcTest", "big", "name", "Calc.java:9", "expected: <7> but was: <8>"], note="xml-reports"),
     S("rspec-fail", "ruby", "rspec spec", facts=["adds big 6", "adds big 8", "names", "KeyError", "calc.rb:7"]),
     S("minitest-fail", "ruby", "ruby -Ilib test/calc_test.rb", facts=["test_big", "test_name", "KeyError", "calc_test.rb:10"]),
     S("c-make-errors", "c", "make", files={"calc.c": "#include \"calc.h\"\nint add(int a, int b) { int unused; return a + b + undeclared_var; }\nchar *s(void) { return 5; }\n"},
@@ -136,4 +137,40 @@ SCENARIOS = [
     S("git-clone", "py", "git clone --progress https://github.com/octocat/Hello-World.git hw", expect="pass", facts=["Cloning into"]),
 ]
 
-SETUP_CMDS = {"lock-diff": LOCK_DIFF_SETUP}
+def many_files(n=300):
+    files = {}
+    for i in range(n):
+        files["src/pkg%d/mod%d/file_%03d.py" % (i % 6, i % 13, i)] = "def f%d(x):\n    return x + %d  # handler %d\n" % (i, i, i)
+    return files
+
+
+BIG_JS = "export const blob = " + repr("x" * 700000) + ";\n"
+
+SCENARIOS += [
+    # ------------------------------------------------ paths & search (Bash + built-in Glob/Grep via hook)
+    S("find-paths", "vitest", "find -L node_modules/@vitest -name '*.d.ts'", expect="pass", facts=["spy/dist/index.d.ts", "runner/utils.d.ts"], note="paths"),
+    S("git-ls-files", "py", "git ls-files", files=many_files(), expect="pass", facts=["src/pkg0/mod0/file_000.py", "file_299.py"], note="paths"),
+    S("rg-search", "vitest", "rg -n --follow 'declare function' node_modules/@vitest/utils/dist", expect="pass", facts=["diffLinesUnified", "helpers.d.ts", "isPrimitive"]),
+    S("grep-rn", "py", "grep -rn 'return x' src", files=many_files(120), expect="pass", facts=["file_000.py", "handler 119"]),
+    S("glob-tool", "vitest", "find -L node_modules/@vitest -name '*.d.ts' -printf '%p\\n'", expect="pass", facts=[], note="tool:Glob"),
+    S("grep-tool", "vitest", "rg -n --follow 'declare function' node_modules/@vitest", expect="pass", facts=[], note="tool:Grep"),
+    # ------------------------------------------------ more stacks / harder cases
+    S("vite-build-warn", "vitest", "npx vite build", files={"index.html": "<script type=module src=/src/main.ts></script>\n", "src/main.ts": "import { blob } from './big';\nconsole.log(blob.length);\n", "src/big.ts": BIG_JS},
+      expect="pass", facts=["larger than 500 kB"]),
+    S("pip-install-verbose", "py", "pip install --no-cache-dir --target ./vendor -v six==1.16.0", expect="pass", facts=["six"]),
+    S("py-stdlib-tb", "py", "python3 -m pytest tests/test_json.py", files={"tests/test_json.py": "import json\n\ndef test_parse():\n    assert json.loads('{bad') == {}\n"},
+      facts=["JSONDecodeError", "test_json.py:4"]),
+    S("mypy-errors", "py", "mypy calc", files={"calc/typed.py": "def f(x: int) -> str:\n    return x\n\nf('a')\n" + "".join("v%d: int = 'no'\n" % i for i in range(20))},
+      facts=["calc/typed.py:2", "calc/typed.py:4", "Incompatible return value", "arg-type"]),
+    S("pyright-errors", "py", "pyright calc", files={"calc/typed.py": "def f(x: int) -> str:\n    return x\n\nf('a')\n" + "".join("v%d: int = 'no'\n" % i for i in range(20))},
+      facts=["typed.py", "reportReturnType", "reportArgumentType"]),
+    S("jest-snapshot", "jest", "npx jest --ci snap", files={"snap.test.js": "test('render', () => { expect({ title: 'Hello', items: [1, 2, 3] }).toMatchSnapshot(); });\n",
+                                                         "__snapshots__/snap.test.js.snap": "// Jest Snapshot v1, https://goo.gl/fbAQLP\n\nexports[`render 1`] = `\n{\n  \"items\": [\n    1,\n    2,\n  ],\n  \"title\": \"Hi\",\n}\n`;\n"},
+      facts=["render", "snapshot", "Hello"]),
+    S("rust-integration", "rust", "cargo test", files={"tests/api.rs": "#[test]\nfn api_add() { assert_eq!(calc::add(10, 1), 11); }\n#[test]\nfn api_ok() { assert_eq!(calc::add(1, 1), 2); }\n"},
+      facts=["tests::big", "--lib"]),
+    S("rust-nofailfast", "rust", "cargo test --no-fail-fast", files={"tests/api.rs": "#[test]\nfn api_add() { assert_eq!(calc::add(10, 1), 11); }\n#[test]\nfn api_ok() { assert_eq!(calc::add(1, 1), 2); }\n"},
+      facts=["api_add", "tests::big", "tests/api.rs:2"]),
+]
+
+SETUP_CMDS = {"lock-diff": LOCK_DIFF_SETUP, "git-ls-files": "git init -q . && git add -A"}

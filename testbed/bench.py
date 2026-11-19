@@ -16,6 +16,7 @@ WORK = os.path.join(HERE, ".work")
 CAPS = os.path.join(HERE, "captures")
 LEAN_ROOT = os.environ.get("LEAN_ROOT") or ("/home/user/vet-rate-org-forkd" if os.path.isdir("/home/user/vet-rate-org-forkd/lib/lean") else os.path.dirname(HERE))
 os.environ["LEAN_HOME"] = os.environ.get("LEAN_TEST_HOME") or tempfile.mkdtemp(prefix="lean-bench-")
+os.environ.setdefault("LEAN_REPORT_MAX_AGE", str(10 ** 9))   # captured reports are older than a live run's
 sys.path.insert(0, os.path.join(LEAN_ROOT, "lib"))
 sys.path.insert(0, HERE)
 from lean import filt, hook, jsonc, nav, run, usage, util  # noqa: E402
@@ -101,6 +102,27 @@ def load(name):
 # ---------------------------------------------------------------- eval
 def auto_view(sc, cap, cwd):
     """What lean shows automatically (PostToolUse) — failures pass through unchanged by Claude Code."""
+    if sc["note"].startswith("tool:"):
+        tool = sc["note"][5:]
+        lines = [l for l in cap["raw"].split("\n") if l]
+        tr = {"filenames": [os.path.join(cwd, l) for l in lines], "numFiles": len(lines)} if tool == "Glob" else \
+             {"mode": "content", "content": "\n".join(os.path.join(cwd, l) if not l.startswith("/") else l for l in lines), "numLines": len(lines)}
+        out = []
+        old = hook.emit
+        hook.emit = out.append
+        try:
+            hook.on_post_search({"hook_event_name": "PostToolUse", "tool_name": tool, "session_id": "bench", "tool_input": {}, "tool_response": tr})
+        finally:
+            hook.emit = old
+        if not out:
+            return "\n".join(tr.get("filenames") or [tr.get("content", "")]), "unchanged"
+        new = out[0]["hookSpecificOutput"]["updatedToolOutput"]
+        shown = new["filenames"][0] if tool == "Glob" else new["content"]
+        # losslessness: expanded view must equal the original
+        orig = tr["filenames"] if tool == "Glob" else tr["content"].split("\n")
+        if tool == "Glob" and filt.expand_paths(shown) != orig:
+            return shown + "\n[LOSSY]", "filtered"
+        return shown, "filtered"
     if cap["code"] != 0:
         return cap["raw"], "passthrough"
     ev = {"hook_event_name": "PostToolUse", "tool_name": "Bash", "session_id": "bench", "cwd": cwd,
@@ -140,14 +162,26 @@ def evaluate(names=(), verbose=False):
             print("skip %s (not captured)" % sc["name"])
             continue
         cap = load(sc["name"])
-        cwd = materialize(sc)
+        cwd = os.path.join(WORK, sc["name"]) if sc["note"] == "xml-reports" and os.path.isdir(os.path.join(WORK, sc["name"])) else materialize(sc)
         util.save_state(util.root(cwd), {})        # no Δ carry-over between scenarios
         t0 = time.time()
         wtext, kind = wrapped_view(sc, cap, cwd)
         lat = (time.time() - t0) * 1000
         util.save_state(util.root(cwd), {})
         atext, amode = auto_view(sc, cap, cwd)
+        if sc["note"].startswith("tool:"):
+            wtext, kind = atext, sc["note"]
+            r_raw = len(util.clean(cap["raw"])) + cap["raw"].count("\n") * len(cwd)   # tools return absolute paths
+        if "[LOSSY]" in atext:
+            print("LOSSY compaction in", sc["name"])
         raw = util.clean(cap["raw"])
+        if sc["note"].startswith("tool:"):
+            raw = "x" * r_raw
+        if sc["note"] == "paths":
+            exp = filt.expand_paths(wtext) if "(" in wtext.split("\n", 1)[0] else wtext.split("\n")
+            if [l for l in exp if l] != [l for l in cap["raw"].split("\n") if l]:
+                print("LOSSY path compaction in", sc["name"])
+                wtext += "\n[LOSSY]"
         facts, missing, false_ok, false_fail = judge(sc, cap, wtext)
         _, amissing, afalse_ok, _ = judge(sc, cap, atext) if amode == "filtered" else (None, [], False, False)
         r = dict(name=sc["name"], kind=kind, code=cap["code"], raw=T(len(raw)), wrapped=T(len(wtext)), auto=T(len(atext)), amode=amode,
@@ -155,6 +189,8 @@ def evaluate(names=(), verbose=False):
                  grew=len(wtext) > len(raw) + 200)
         rows.append(r)
         bad = []
+        if "[LOSSY]" in wtext or "[LOSSY]" in atext:
+            bad.append("LOSSY")
         if missing:
             bad.append("lost %s" % missing)
         if amissing:
