@@ -234,16 +234,25 @@ LOOPS = {
     "go": ("go test ./...", [("calc.go", "return a + b + 1", "return a + b")]),
     "rust": ("cargo test", [("src/lib.rs", "a + b + 1", "a + b"), ("src/lib.rs", "v[0]", "*v.first().unwrap_or(&0)")]),
     "jest": ("npx jest", [("sum.js", "a + b + (a > 5 ? 1 : 0)", "a + b"), ("sum.js", "u.profile.name", "(u.profile || {name: 'x'}).name")]),
+    "maven": ("mvn -B test", [("src/main/java/demo/Calc.java", "a + b + (a > 5 ? 1 : 0)", "a + b"),
+                              ("src/main/java/demo/Calc.java", 'm.get("name").trim()', 'm.getOrDefault("name", m.getOrDefault("nm", "")).trim()')]),
+    "gradle": ("gradle test --console=plain", [("src/main/java/demo/Calc.java", "a + b + (a > 5 ? 1 : 0)", "a + b"),
+                                               ("src/main/java/demo/Calc.java", 'm.get("name").trim()', 'm.getOrDefault("name", m.getOrDefault("nm", "")).trim()')]),
+    "ruby": ("rspec", [("lib/calc.rb", "a + b + (a > 5 ? 1 : 0)", "a + b"), ("lib/calc.rb", "h.fetch(:name)", "h.fetch(:name) { h.fetch(:nm) }")]),
 }
 TURNS_BETWEEN_RUNS = 3   # requests the agent makes between test runs (read, edit, …)
+LOOP_PROBLEMS = []
+VERBOSE_LOOP = "-v" in sys.argv
 
 
-def loop():
+def loop(only=()):
     lean_bin = os.path.join(LEAN_ROOT, "bin", "lean")
     tbin = os.path.join(LEAN_ROOT, "bin", "t")
     print("%-8s %5s %10s %10s %10s %10s %7s" % ("project", "runs", "raw out", "lean out", "raw ctx", "lean ctx", "saved"))
     totals = [0, 0, 0, 0]
     for proj, (cmd, fixes) in LOOPS.items():
+        if only and proj not in only:
+            continue
         base = materialize({"name": "loop-" + proj, "project": proj, "files": {}})
         if proj == "rust":
             os.environ["CARGO_TARGET_DIR"] = os.path.join(WORK, "_cargo_target", "loop")
@@ -251,15 +260,27 @@ def loop():
         env = dict(base_env(), LEAN_HOME=os.environ["LEAN_HOME"])
         raw_outs, lean_outs = [], []
         steps = [None] + fixes
+        prev_fail = False
         for i, fx in enumerate(steps):
             if fx:
                 p = os.path.join(base, fx[0])
                 s = open(p).read()
+                if fx[1] not in s:
+                    LOOP_PROBLEMS.append("%s step %d: fix text not found" % (proj, i))
                 open(p, "w").write(s.replace(fx[1], fx[2]))
             _, raw, _ = sh(cmd, base)
             raw_outs.append(T(len(raw)))
-            _, lo, _ = sh("%s" % tbin, base, env=env)
+            lcode, lo, _ = sh("%s" % tbin, base, env=env)
             lean_outs.append(T(len(lo)))
+            if VERBOSE_LOOP:
+                print("--- %s step %d (exit %d)\n%s" % (proj, i, lcode, lo))
+            if prev_fail and not lo.startswith("t: ") and "rerun" not in lo.split("\n", 1)[0]:
+                LOOP_PROBLEMS.append("%s step %d: expected a rerun of previous failures, got: %s" % (proj, i, lo.split("\n", 1)[0][:100]))
+            if i == len(steps) - 1 and (lcode != 0 or "✓" not in lo):
+                LOOP_PROBLEMS.append("%s final step: expected green, got exit %d: %s" % (proj, lcode, lo[:200]))
+            if i < len(steps) - 1 and lcode == 0:
+                LOOP_PROBLEMS.append("%s step %d: expected failures, got exit 0" % (proj, i))
+            prev_fail = lcode != 0
         n = len(steps)
         # context cost: each output is re-read by every later request in the episode
         def ctx(outs):
@@ -269,6 +290,8 @@ def loop():
             totals[k] += v
         print("%-8s %5d %10d %10d %10d %10d %6.0f%%" % (proj, n, sum(raw_outs), sum(lean_outs), rc, lc, 100 * (1 - lc / max(rc, 1))))
     print("%-8s %5s %10d %10d %10d %10d %6.0f%%" % ("TOTAL", "", totals[0], totals[1], totals[2], totals[3], 100 * (1 - totals[3] / max(totals[2], 1))))
+    for p in LOOP_PROBLEMS:
+        print("  ✗ loop:", p)
     return totals
 
 
@@ -445,6 +468,100 @@ def _compare(files, truth_fn):
     return agg
 
 
+# ---------------------------------------------------------------- hooks
+def _hook(ev):
+    out = []
+    old = hook.emit
+    hook.emit = out.append
+    try:
+        name = ev["hook_event_name"]
+        if name == "PreToolUse" and ev.get("tool_name") == "Read":
+            hook.on_pre_read(ev)
+        elif name == "PostToolUse":
+            hook.on_post_edit(ev)
+        elif name == "SessionStart":
+            hook.on_session_start(ev)
+    finally:
+        hook.emit = old
+    return out[0]["hookSpecificOutput"] if out else None
+
+
+EDIT_CASES = {   # ext: (valid, broken, expected substring in the error)
+    ".py": ("def f(x):\n    return x\n", "def f(x:\n    return x\n", "SyntaxError"),
+    ".js": ("export const f = (x) => x;\n", "export const f = (x => x;\n", "SyntaxError"),
+    ".mjs": ("export const f = (x) => x;\n", "export const f = (x) => {\n", "SyntaxError"),
+    ".ts": ("export const f = (x: number): number => x;\n", "export const f = (x: number): number => {\n", "TS1005"),
+    ".tsx": ("export const C = () => <div>{1}</div>;\n", "export const C = () => <div>{1}</span>;\n", "TS17002"),
+    ".go": ("package m\n\nfunc F() int { return 1 }\n", "package m\n\nfunc F() int { return 1\n", "expected"),
+    ".rs": ("pub fn f() -> i32 { 1 }\n", "pub fn f() -> i32 { 1\n", "error"),
+    ".json": ('{"a": 1}\n', '{"a": 1,}\n', "invalid JSON"),
+    ".toml": ('a = 1\n', 'a = = 1\n', "invalid TOML"),
+}
+
+
+def hooks_suite():
+    problems = []
+    d = tempfile.mkdtemp(dir=os.path.join(WORK, "_shared", "vitest"))   # has node_modules/typescript like a real TS project
+    sid = "hooks-%d" % os.getpid()
+    # edit check
+    for ext, (good, bad, want) in EDIT_CASES.items():
+        p = os.path.join(d, "f" + ext)
+        open(p, "w").write(good)
+        t0 = time.time()
+        r = _hook({"hook_event_name": "PostToolUse", "tool_name": "Edit", "session_id": sid, "tool_input": {"file_path": p}})
+        dt_ok = (time.time() - t0) * 1000
+        if r:
+            problems.append("edit-check false positive on valid %s: %s" % (ext, r.get("additionalContext", "")[:120]))
+        open(p, "w").write(bad)
+        t0 = time.time()
+        r = _hook({"hook_event_name": "PostToolUse", "tool_name": "Edit", "session_id": sid, "tool_input": {"file_path": p}})
+        dt_bad = (time.time() - t0) * 1000
+        msg = (r or {}).get("additionalContext", "")
+        if not r and want:
+            problems.append("edit-check missed broken %s" % ext)
+        elif want and want.lower() not in msg.lower():
+            problems.append("edit-check %s message lacks %r: %s" % (ext, want, msg[:120]))
+        print("edit-check %-6s valid ok (%3.0f ms) · broken %s (%3.0f ms)" % (ext, dt_ok, "caught" if msg else ("n/a" if not want else "MISSED"), dt_bad))
+    # read guard
+    import glob as _g
+    goroot = subprocess.run(["go", "env", "GOROOT"], stdout=subprocess.PIPE, text=True).stdout.strip()
+    cases = [(goroot + "/src/net/http/server.go", True), (sorted(_g.glob(os.path.expanduser("~/.cargo/registry/src/*/syn-2*/src/expr.rs")))[0], True),
+             (os.path.join(LEAN_ROOT, "lib", "lean", "filt.py"), True), (os.path.join(LEAN_ROOT, "lib", "lean", "run.py"), False),
+             (os.path.join(LEAN_ROOT, "skills", "lean", "SKILL.md"), False), (os.path.join(LEAN_ROOT, "README.md"), False)]
+    for path, expect_deny in cases:
+        ev = {"hook_event_name": "PreToolUse", "tool_name": "Read", "session_id": sid, "tool_input": {"file_path": path}}
+        r = _hook(ev)
+        denied = bool(r and r.get("permissionDecision") == "deny")
+        size = os.path.getsize(path)
+        if denied != expect_deny:
+            problems.append("read-guard %s: denied=%s expected=%s" % (os.path.basename(path), denied, expect_deny))
+        if denied:
+            reason = r["permissionDecisionReason"]
+            top = [s_[4] for s_ in nav.outline(path) if s_[2] == 0]
+            missing = [n for n in top if n not in reason]
+            if missing:
+                problems.append("read-guard outline for %s misses %d top-level symbols, e.g. %s" % (os.path.basename(path), len(missing), missing[:3]))
+            if _hook(ev):
+                problems.append("read-guard retry was blocked for %s" % os.path.basename(path))
+            print("read-guard %-14s %6d B → outline %5d B (%2.0f%%) · retry allowed" % (os.path.basename(path), size, len(reason), 100 * len(reason) / size))
+        else:
+            print("read-guard %-14s %6d B → allowed" % (os.path.basename(path), size))
+    # session brief per project
+    want = {"py": "pytest", "vitest": "vitest", "jest": "jest", "go": "go", "rust": "cargo", "maven": "junit", "gradle": "junit", "ruby": "rspec"}
+    for proj, runner in want.items():
+        base = os.path.join(WORK, "loop-" + proj)
+        if not os.path.isdir(base):
+            base = materialize({"name": "brief-" + proj, "project": proj, "files": {}})
+        r = _hook({"hook_event_name": "SessionStart", "session_id": sid, "cwd": base, "source": "startup"})
+        ctx = (r or {}).get("additionalContext", "")
+        if runner not in ctx:
+            problems.append("brief for %s lacks runner %s: %s" % (proj, runner, ctx[:160]))
+        print("brief %-7s %4d chars · %s" % (proj, len(ctx), ctx.split("\n")[1][:90] if "\n" in ctx else ctx[:90]))
+    for p in problems:
+        print("  ✗ hooks:", p)
+    return problems
+
+
 # ---------------------------------------------------------------- report
 def report(rows, problems, loop_tot, fz, pf, ol):
     L = ["# lean testbed report", "", "Generated by `python3 testbed/bench.py all` against lean at `%s`." % LEAN_ROOT, ""]
@@ -484,7 +601,8 @@ def main(argv):
         _, problems = evaluate(rest, "-v" in argv)
         return 1 if problems else 0
     elif cmd == "loop":
-        loop()
+        loop(rest)
+        return 1 if LOOP_PROBLEMS else 0
     elif cmd == "fuzz":
         c, _, _ = fuzz(int(rest[0]) if rest else 400)
         return 1 if c else 0
@@ -492,9 +610,13 @@ def main(argv):
         perf()
     elif cmd == "outline":
         outline_accuracy()
+    elif cmd == "hooks":
+        return 1 if hooks_suite() else 0
     elif cmd == "all":
         rows, problems = evaluate()
         lt = loop()
+        problems += [("loop", [p]) for p in LOOP_PROBLEMS]
+        problems += [("hooks", [p]) for p in hooks_suite()]
         fz = fuzz()
         pf = perf()
         ol = outline_accuracy()
