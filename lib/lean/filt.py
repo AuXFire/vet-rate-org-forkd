@@ -63,7 +63,7 @@ def main_segment(cmd):
 def kind_of(cmd):
     if re.search(r"(^|\s)RAW=1\b", cmd):
         return "raw"
-    first = cmd.split("<<")[0]       # heredoc bodies are data, not pipes
+    first = re.sub(r"'[^']*'|\"(\\.|[^\"\\])*\"", "''", cmd.split("<<")[0])   # heredocs and quoted args are data, not pipes
     if re.search(r"(?<!\|)\|(?!\|)", first) and not re.search(r"\|\s*(tee|cat)\b", first):
         return "pipe"   # agent already shaped the output
     m = main_segment(cmd.split("<<")[0] if "<<" in cmd else cmd)
@@ -411,13 +411,25 @@ def compact_names(names, limit=60):
     return ", ".join(items[:limit]) + (" +%d more (see log)" % more if more > 0 else "")
 
 
+LABEL = re.compile(r"(?i)^(?:-{2,}\s*)?(found|expected|got|want|actual|received|diff|reason|caused by|error)\b\s*:?")
+
+
 def _pick_detail(d, cap=8):
-    """Keep assertion diffs (+/- lines) over context when trimming."""
+    """Trim long failure details without losing the verdict: keep labelled sections (expected/got/…) and
+    assertion diffs (+/- lines) over context; say how much stayed in the log."""
     if len(d) <= cap:
         return d
-    diff = [l for l in d if l[:1] in "+-" and not l.startswith(("- Expected", "+ Received", "+++", "---"))]
-    keep = d[:2] + [l for l in diff if l not in d[:2]]
-    return keep[:cap + 4]
+    keep = set(range(2))
+    for i, l in enumerate(d):
+        if LABEL.match(l):
+            keep.update(range(i, min(len(d), i + 3)))          # label + its value lines
+        elif l[:1] in "+-" and not l.startswith(("- Expected", "+ Received", "+++", "---")):
+            keep.add(i)
+    idx = sorted(keep)[:cap + 10]
+    out = [d[i] for i in idx]
+    if len(idx) < len(d):
+        out.append("… +%d detail lines (log)" % (len(d) - len(idx)))
+    return out
 
 
 def _rel(path, cwd):

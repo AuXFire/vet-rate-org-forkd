@@ -20,13 +20,14 @@ Most of the token cost in agent work isn't the model's writing. It's tool output
 |---|---|
 | **Output filter** (PostToolUse hook) | Test, build, lint, install, git and docker output from **successful** calls is replaced with a compact view. Unknown commands get a near-lossless squeeze: ANSI and progress redraws removed, repeats collapsed, very long lines capped, head/tail kept along with every error line. Lockfile and generated-file hunks in diffs collapse to `+N −M`. |
 | **MCP and JSON compaction** | Every MCP server is covered automatically, including ones added later, through the `mcp__.*` hook. The same applies to JSON printed by shell commands (`gh api`, `curl`). Lists of same-shaped objects become `{"_cols":[…],"_rows":[[…]]}`, which is lossless, and JSON is minified with escapes written as plain characters. Link-noise keys (`*_url` except `html_url`/`url`, `node_id`, `_links`) are dropped, recoverably, since the raw response is logged; turn that off with `x config json_prune false`. Measured on a GitHub list call: −27% for 3 items, and the saving grows with list length. |
-| **`t`** smart test | Detects pytest / jest / vitest / go / cargo. Reruns the last failures (`--lf`, `--onlyFailures`, `-run`, name filters), then runs the full suite once they pass. With no previous failures, it runs only tests related to changed files (`vitest related`, `jest --findRelatedTests`, changed Go packages, `test_<module>.py`). Repeat runs show only what changed: `[Δ 2 fixed · 1 still]`, and an unchanged failure takes one line. |
+| **Path and search compaction** | Built-in **Glob/Grep** results and `find`/`fd`/`git ls-files`/`rg`/`grep` output. The common prefix is printed once, paths form an indented tree with sibling runs as `{a,b}`, and search hits are grouped under each file. Lossless and order-preserving (Glob's modification-time order is kept). Measured: Glob −79%, Grep −47%. |
+| **`t`** smart test | Detects pytest / jest / vitest / go / cargo / Maven / Gradle (JUnit) / RSpec / minitest. Reruns only the last failures (`--lf`, `-t`, `-run`, `-Dtest=Class#m`, `--tests`, `rspec -e`, `-n`, name filters), then runs the full suite once they pass. With no previous failures, it runs only tests related to changed files (`vitest related`, `jest --findRelatedTests`, changed Go packages, `test_<module>.py`). Repeat runs show only what changed: `[Δ 2 fixed · 1 still]`, and an unchanged failure takes one line. |
 | **`c`** check | Typecheck, lint, vet and clippy for the nearest project, run in parallel. It respects the project's own lint config; without one, ruff runs only its correctness rules, because its built-in defaults now include style rules. Errors are grouped by file and repeated messages merged. Errors inside `node_modules`/`site-packages` collapse to one line, since they're usually a config problem. |
 | **`o`** navigate | `o file` → symbols with line ranges · `o dir` → repo map · `o def X` → definition body · `o refs X` → references by file · `o def zod.object` → looks inside installed dependencies (node / python / go / cargo, `.d.ts` first). |
 | **`g`** git | One-line status, diff with tight context and lockfiles collapsed, short log. |
 | **`sub`** | Search and replace across files as a dry-run diff, then `--apply`. It understands sed-style `\n`/`\t`, handles patterns that span lines, and runs the edit check on every file it changes. Replaces dozens of Edit calls. |
 | **Read guard** (PreToolUse) | A full Read of a code file over 400 lines (markdown: 800) is blocked once, and the outline is returned instead. Reading the same file again goes through. Skill, plugin and `.claude` directories, and `SKILL.md`/`CLAUDE.md`/`AGENTS.md`, are never guarded, because the agent was told to read them in full. Follow-up partial reads and full re-reads are counted as costs, so the reported savings stay honest. |
-| **Edit check** (PostToolUse) | After each Edit or Write, a check of under a second for syntax errors and undefined names: `ast`/ruff, `node --check`, esbuild, gofmt, rustfmt. It's silent on success and reports one line on failure, which catches mistakes before a test run. |
+| **Edit check** (PostToolUse) | After each Edit or Write, a check of under a second for syntax errors and undefined names: `ast`/ruff for Python; `node --check` for JavaScript, including ESM files, which plain `--check` skips; esbuild, or the project's own `typescript`, for TS/TSX/JSX; gofmt; rustfmt; JSON; TOML. It's silent on success and reports one line on failure, which catches mistakes before a test run. |
 | **Session brief** (SessionStart / SubagentStart) | About 4 lines covering repo, branch, stack, test and check commands, top directories, and the tools. It replaces the usual 3–5 exploratory calls. It's injected once per session, so the prompt cache stays intact. |
 | **Task state** (SessionStart on resume or compaction, PreCompact) | Files edited, last test result and failing tests, and last check result. After compaction the agent gets this back in a few lines and doesn't have to rediscover it. |
 | **Quiet environment** | `NO_COLOR`, no pagers, no npm fund/update/progress output, no pip version check, no cargo progress bar. These are exported through `CLAUDE_ENV_FILE`. |
@@ -36,6 +37,14 @@ Most of the token cost in agent work isn't the model's writing. It's tool output
 Claude Code doesn't let hooks rewrite the output of a **failed** call; it passes it to the model unchanged. So for anything that may fail, the brief and the skill steer the agent to `t`, `c` or `x run <cmd>`. These filter inside the command, so a failing run is compact too. The failure hook records missed savings (they appear in `x stats`) and gives a one-line tip at most once per session.
 
 Automatic command rewriting (PreToolUse `updatedInput` → `lean run …`) is **on only in `bypassPermissions` mode**. In other modes, permission rules and the auto-mode classifier review the command's input, and rewriting it would either trigger prompts or get denied. Set `x config rewrite always` to force it on, or `never` to turn it off.
+
+## Lossless merging
+
+Failures and diagnostics that differ only in values are merged into one line, with every value kept:
+`×3 AssertionFailedError: expected: <{7|8|9}> but was: <{8|9|10}>`, `unused variable: \`v{0..39}\` — src/main.rs:{2..41}`, `CalcTest.big[{1|2|3}]`.
+`filt.expand_braces()` and `filt.expand_paths()` are the exact inverses, and the test suites use them to prove nothing is lost.
+When long failure details have to be trimmed, the labelled sections (`expected/found/got/want/actual/diff`) and the `+`/`-` diff lines are kept, and the trim says how many lines stayed in the log.
+JUnit runs that print no detail, such as `gradle -q` or quiet Maven, get their failures and counts from the fresh XML reports.
 
 ## Measurement
 
@@ -85,6 +94,19 @@ git clone <this repo> ~/lean && ~/lean/install.sh      # links t c o g sub x int
 ## Skills
 
 Skill content is instructions, so lean never compresses it. Skills still benefit indirectly: their scripts' output, MCP calls and test runs go through the same filters. `x waste` shows what each tool, MCP server and skill load costs, so a new heavy source shows up right away.
+
+## Testbed results
+
+The `lean-testbed` branch is a separate test project. It captures real tool output from 60 scenarios across 10 stacks, including real Go standard-library packages with injected bugs. Independent checkers, written separately from `lean`'s parsers, pull the must-keep facts out of the raw output. The harness then measures fact retention, false successes, tokens, latency and robustness:
+
+| Suite | Result |
+|---|---|
+| Scenarios (pytest, vitest, jest, go, cargo, Maven, Gradle, RSpec, minitest, tsc, eslint, ruff, mypy, pyright, clippy, gcc, npm, pip, git, JSON APIs, logs, Glob/Grep) | **75% fewer tokens**, every fact kept, 0 false successes |
+| Fix loops, real `t` runs on 8 stacks, counting re-sent context | **84% lower context cost** (Maven 95%, Python 81%, Rust 83%) |
+| `o` outlines vs `go/ast`, the TypeScript compiler and `syn` (3,799 real symbols) | **100%** recall, exact starts, ends within ±1 |
+| Fuzz (400 adversarial inputs) | 0 crashes, 0 outputs grown |
+| Edit check, 9 languages | 0 false positives, every broken file caught |
+| Hook latency | about 50–60 ms; status line about 105 ms on a 5k-request transcript |
 
 ## Tests
 
