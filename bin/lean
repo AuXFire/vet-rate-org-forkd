@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Single entry point. Symlinked as t, c, o, g, sub, x; dispatches on the invoked name.
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do d="$(cd -P "$(dirname "$src")" && pwd)"; src="$(readlink "$src")"; [[ $src != /* ]] && src="$d/$src"; done
+ROOT="$(cd -P "$(dirname "$src")/.." && pwd)"
+exec python3 -S -c 'import sys; sys.path.insert(0, sys.argv[1]); from lean.cli import main; sys.exit(main(sys.argv[2], sys.argv[3:]))' "$ROOT/lib" "$(basename "$0")" "$@"

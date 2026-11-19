@@ -1,0 +1,27 @@
+npm http cache https://registry.npmjs.org/left-pad 62ms (cache hit)
+npm http fetch POST 200 https://registry.npmjs.org/-/npm/v1/security/advisories/bulk 150ms
+npm http fetch GET 200 https://registry.npmjs.org/lodash 55ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/vite 69ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/esbuild 113ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint%2fplugin-kit 121ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/@vitest%2fmocker 121ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/tinypool 122ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/vitest 125ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/eslint 41ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/vite-node 37ms (cache revalidated)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint-community%2feslint-utils 61ms (cache revalidated)
+
+up to date, audited 375 packages in 801ms
+
+61 packages are looking for funding
+  run `npm fund` for details
+
+9 vulnerabilities (2 low, 3 moderate, 2 high, 2 critical)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.

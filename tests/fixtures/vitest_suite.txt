@@ -1,0 +1,103 @@
+
+ RUN  v2.1.9 /tmp/claude-0/-home-user-vet-rate-org-forkd/4cf1f306-e64a-52be-9308-9075743b2cdb/scratchpad/fx/js
+
+ ❯ sum.test.js (5 tests | 4 failed) 9ms
+   × big 6 6ms
+     → expected 8 to be 7 // Object.is equality
+   × big 7 1ms
+     → expected 9 to be 8 // Object.is equality
+   × big 8 1ms
+     → expected 10 to be 9 // Object.is equality
+   × user 1ms
+     → Cannot read properties of undefined (reading 'name')
+ ❯ jt/sum.test.cjs (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  jt/sum.test.cjs [ jt/sum.test.cjs ]
+ReferenceError: test is not defined
+ ❯ jt/sum.test.cjs:3:1
+      1| const sum = (a, b) => a + b + (a > 5 ? 1 : 0);
+      2| const user = (u) => u.profile.name;
+      3| test('small', () => expect(sum(1, 2)).toBe(3));
+       | ^
+      4| for (const a of [6, 7, 8]) test(`big ${a}`, () => expect(sum(a, 1)).to…
+      5| test('user', () => expect(user({})).toBe('x'));
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  sum.test.js > big 6
+AssertionError: expected 8 to be 7 // Object.is equality
+
+- Expected
++ Received
+
+- 7
++ 8
+
+ ❯ sum.test.js:4:69
+      2| import { sum, user } from './sum.js';
+      3| test('small', () => expect(sum(1, 2)).toBe(3));
+      4| for (const a of [6, 7, 8]) test(`big ${a}`, () => expect(sum(a, 1)).to…
+       |                                                                     ^
+      5| test('user', () => expect(user({})).toBe('x'));
+      6| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  sum.test.js > big 7
+AssertionError: expected 9 to be 8 // Object.is equality
+
+- Expected
++ Received
+
+- 8
++ 9
+
+ ❯ sum.test.js:4:69
+      2| import { sum, user } from './sum.js';
+      3| test('small', () => expect(sum(1, 2)).toBe(3));
+      4| for (const a of [6, 7, 8]) test(`big ${a}`, () => expect(sum(a, 1)).to…
+       |                                                                     ^
+      5| test('user', () => expect(user({})).toBe('x'));
+      6| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  sum.test.js > big 8
+AssertionError: expected 10 to be 9 // Object.is equality
+
+- Expected
++ Received
+
+- 9
++ 10
+
+ ❯ sum.test.js:4:69
+      2| import { sum, user } from './sum.js';
+      3| test('small', () => expect(sum(1, 2)).toBe(3));
+      4| for (const a of [6, 7, 8]) test(`big ${a}`, () => expect(sum(a, 1)).to…
+       |                                                                     ^
+      5| test('user', () => expect(user({})).toBe('x'));
+      6| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  sum.test.js > user
+TypeError: Cannot read properties of undefined (reading 'name')
+ ❯ Module.user sum.js:2:38
+      1| export const sum = (a, b) => a + b + (a > 5 ? 1 : 0);
+      2| export const user = (u) => u.profile.name;
+       |                                      ^
+      3| 
+ ❯ sum.test.js:5:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+ Test Files  2 failed (2)
+      Tests  4 failed | 1 passed (5)
+   Start at  17:21:17
+   Duration  205ms (transform 24ms, setup 0ms, collect 13ms, tests 9ms, environment 0ms, prepare 92ms)
+

@@ -1,0 +1,8 @@
+--- FAIL: TestAddBig (0.00s)
+    --- FAIL: TestAddBig/case (0.00s)
+        add_test.go:5: Add(6,1) = 8; want 7
+    --- FAIL: TestAddBig/case#01 (0.00s)
+        add_test.go:5: Add(7,1) = 9; want 8
+FAIL
+FAIL	example.com/m	0.002s
+FAIL

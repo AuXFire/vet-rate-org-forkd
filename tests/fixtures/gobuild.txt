@@ -1,0 +1,2 @@
+# example.com/m
+./b.go:2:23: undefined: undefinedThing

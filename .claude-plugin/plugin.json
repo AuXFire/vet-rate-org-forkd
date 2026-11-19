@@ -1,0 +1,17 @@
+{
+  "name": "lean",
+  "displayName": "lean",
+  "version": "0.1.0",
+  "description": "Cuts agent token use without losing information: compact tool output (full logs kept), smart test/check/outline/git commands, read guard, edit checks, and live token/savings tracking.",
+  "license": "MIT",
+  "keywords": [
+    "tokens",
+    "efficiency",
+    "hooks",
+    "testing",
+    "agents"
+  ],
+  "author": {
+    "name": "lean contributors"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "lean",
+  "owner": {
+    "name": "lean"
+  },
+  "plugins": [
+    {
+      "name": "lean",
+      "source": "./",
+      "description": "Token-efficient agent toolkit: output filtering, smart tools, savings tracking."
+    }
+  ],
+  "description": "Token-efficient agent toolkit for Claude Code"
+}
