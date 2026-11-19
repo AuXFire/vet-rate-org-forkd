@@ -89,7 +89,7 @@ class Generic(unittest.TestCase):
         raw = "\n".join(["start"] + ["Downloading chunk %d of 900" % i for i in range(900)] + ["ERROR: disk full at /var/x"] + ["tail %d" % i for i in range(300)])
         out = filt.generic(raw)
         self.assertIn("ERROR: disk full at /var/x", out)
-        self.assertIn("tail 299", out)
+        self.assertIn("tail 299", filt.expand_braces(out))
         self.assertLess(len(out), len(raw) * 0.25)
 
     def test_json_compaction_is_lossless(self):
