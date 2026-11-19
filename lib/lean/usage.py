@@ -303,6 +303,10 @@ def stats(args):
             per_session[sid][0].extend(st["req"].values())
             per_session[sid][1].extend(st.get("compacts", []))
         metrics = load_metrics(sid)
+        rows = per_session.get(sid, ([], []))[0]
+        if rows:   # commands run without LEAN_SID (session began before install): attribute by time
+            lo, hi = min(r[0] for r in rows), max(r[0] for r in rows) + 600
+            metrics += [dict(m, sid=sid) for m in load_metrics(None, lo) if not m.get("sid") and m["ts"] <= hi]
     else:
         for f in _all_transcripts(since):
             st = parse_transcript(f)
