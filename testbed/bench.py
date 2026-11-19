@@ -63,6 +63,26 @@ def materialize(sc):
     d = os.path.join(WORK, sc["name"])
     shutil.rmtree(d, ignore_errors=True)
     os.makedirs(d)
+    if sc["project"].startswith("gostd:"):          # a real Go stdlib package as its own module
+        pkg = sc["project"][6:]
+        src = os.path.join(subprocess.run(["go", "env", "GOROOT"], stdout=subprocess.PIPE, text=True).stdout.strip(), "src", pkg)
+        for f in os.listdir(src):
+            if f.endswith(".go"):
+                shutil.copy(os.path.join(src, f), d)
+        mod = "example.com/%s" % pkg.replace("/", "_")
+        _write(os.path.join(d, "go.mod"), "module %s\n\ngo 1.21\n" % mod)
+        for f in os.listdir(d):          # external test packages import the real stdlib path: point them at the copy
+            if f.endswith(".go"):
+                p = os.path.join(d, f)
+                txt = open(p).read()
+                if '"%s"' % pkg in txt:
+                    _write(p, txt.replace('"%s"' % pkg, '"%s"' % mod))
+        for f, old, new in sc.get("mutate", []):
+            p = os.path.join(d, f)
+            txt = open(p).read()
+            assert old in txt, "mutation anchor not found: %s" % old
+            _write(p, txt.replace(old, new, 1))
+        return d
     for f, c in dict(PROJECTS[sc["project"]], **sc["files"]).items():
         _write(os.path.join(d, f), c)
     for sd in SHARED_DIRS.get(sc["project"], []):
@@ -224,7 +244,6 @@ LOOPS = {
         ("calc/core.py", "user['name'].strip()", "user.get('name', user.get('nm', '')).strip()"),
         ("tests/test_core.py", "[1, 2, 4]", "[1, 2, 3]"),
         ("calc/core.py", "return a / b", "return a / b if b else 0"),
-        ("tests/test_fmt.py", "'0.0%'", "'0.0%'"),
     ]),
     "vitest": ("npx vitest run", [
         ("src/sum.ts", "a + b + (a > 5 ? 1 : 0)", "a + b"),

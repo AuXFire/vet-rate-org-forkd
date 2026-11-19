@@ -6,8 +6,8 @@ expect: "fail" | "pass" — ground truth used for the false-success check
 import json
 
 
-def S(name, project, cmd, files=None, facts=(), expect="fail", note=""):
-    return dict(name=name, project=project, cmd=cmd, files=files or {}, facts=list(facts), expect=expect, note=note)
+def S(name, project, cmd, files=None, facts=(), expect="fail", note="", mutate=()):
+    return dict(name=name, project=project, cmd=cmd, files=files or {}, facts=list(facts), expect=expect, note=note, mutate=list(mutate))
 
 
 # ---------------------------------------------------------------- generated content
@@ -174,3 +174,11 @@ SCENARIOS += [
 ]
 
 SETUP_CMDS = {"lock-diff": LOCK_DIFF_SETUP, "git-ls-files": "git init -q . && git add -A"}
+
+SCENARIOS += [
+    # ------------------------------------------------ real code: Go stdlib packages with an injected bug
+    S("real-go-csv", "gostd:encoding/csv", "go test ./...", mutate=[("reader.go", "\tr.numLine++", "\tr.numLine += 2")], facts=["TestRead"]),
+    S("real-go-csv-v", "gostd:encoding/csv", "go test -v ./...", mutate=[("reader.go", "\tr.numLine++", "\tr.numLine += 2")], facts=["TestRead"]),
+    S("real-go-tabwriter", "gostd:text/tabwriter", "go test ./...", mutate=[("tabwriter.go", "b.padding = padding", "b.padding = padding + 1")], facts=["Test"]),
+    S("real-go-csv-pass-v", "gostd:encoding/csv", "go test -v ./...", expect="pass", facts=["ok"]),
+]
