@@ -113,6 +113,8 @@ class Generic(unittest.TestCase):
         self.assertEqual(filt.kind_of("RAW=1 pytest"), "raw")
         self.assertEqual(filt.kind_of("cd a && FOO=1 npm test 2>&1"), "test")
         self.assertEqual(filt.kind_of("uv run pytest -x"), "test")
+        self.assertEqual(filt.kind_of("jest -t '^(a|b)$'"), "test")          # | inside quotes is not a pipe
+        self.assertEqual(filt.kind_of('rg "a|b" src | head'), "pipe")
 
     def test_install_success_one_line(self):
         raw = "\n".join(["npm http fetch GET 200 https://registry.npmjs.org/p%d 12ms" % i for i in range(400)] + ["", "added 412 packages, and audited 413 packages in 8s", "", "found 0 vulnerabilities"])
@@ -266,6 +268,31 @@ class Usage(unittest.TestCase):
         rows = [[100.0 + i, "claude-opus-5-5", 0, 0, 0, 1000, 10, ""] for i in range(10)]
         sv = usage.savings([{"ts": 101.5, "raw": 3600, "shown": 0}], rows, compacts=[104.2])
         self.assertEqual(sv["carried"], util.tokens(3600) * 3)   # requests at 102,103,104 only
+
+    def test_transcript_parsing_dedupes_and_tracks_compaction(self):
+        d = tempfile.mkdtemp()
+        os.environ["CLAUDE_PROJECTS_DIR"] = d
+        os.makedirs(os.path.join(d, "proj", "s1", "subagents"))
+        def a(mid, out, ts="2026-11-19T10:00:00Z"):
+            return json.dumps({"type": "assistant", "timestamp": ts, "message": {"id": mid, "model": "claude-opus-5-5",
+                               "usage": {"input_tokens": 1, "cache_creation_input_tokens": 100, "cache_read_input_tokens": 1000,
+                                         "cache_creation": {"ephemeral_1h_input_tokens": 100}, "output_tokens": out}}})
+        with open(os.path.join(d, "proj", "s1.jsonl"), "w") as f:     # streamed blocks repeat the same message id
+            f.write("\n".join([a("m1", 5), a("m1", 50), a("m2", 7),
+                                json.dumps({"type": "system", "subtype": "compact_boundary", "timestamp": "2026-11-19T10:05:00Z"}), ""]))
+        with open(os.path.join(d, "proj", "s1", "subagents", "agent-x.jsonl"), "w") as f:
+            f.write(a("m9", 3) + "\n")
+        rows, comps = [], []
+        for p in usage.session_files("s1"):
+            st = usage.parse_transcript(p, cache=False)
+            rows += list(st["req"].values())
+            comps += st["compacts"]
+        sm = usage.summarize(rows)
+        self.assertEqual(sm["n"], 3)                 # m1 counted once (largest output), m2, subagent m9
+        self.assertEqual(sm["out"], 50 + 7 + 3)
+        self.assertEqual(len(comps), 1)
+        self.assertAlmostEqual(sm["cost"], 3 * (1 * 4 + 100 * 8 + 1000 * 0.20) / 1e6 + 60 * 20 / 1e6)
+        del os.environ["CLAUDE_PROJECTS_DIR"]
 
     def test_price_lookup(self):
         self.assertEqual(usage.price("claude-opus-5-5"), (4, 20, 0.20))

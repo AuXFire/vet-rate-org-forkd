@@ -244,7 +244,7 @@ def gotest(text):
     names = [f["name"] for f in res["failures"]]
     res["failures"] = [f for f in res["failures"] if not (not f["msg"] and any(n.startswith(f["name"] + "/") for n in names))]
     for f in res["failures"]:
-        f["detail"] = f["detail"][:10]
+        f["detail"] = f["detail"][:60]           # renderer picks what matters
         if not f["msg"] and f["detail"]:
             f["msg"] = f["detail"].pop(0)
     if not any(f["msg"].startswith("panic") for f in res["failures"]):

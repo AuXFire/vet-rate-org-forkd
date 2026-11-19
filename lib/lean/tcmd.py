@@ -59,8 +59,9 @@ def _rerun(tst, failed):
     r, cmd = tst["runner"], tst["cmd"]
     if r == "pytest":
         return cmd + " --lf"
-    if r == "jest":
-        return cmd + " --onlyFailures"
+    if r == "jest":      # by name: jest's own --onlyFailures cache is overwritten by any direct run
+        pats = sorted({re.escape(n.replace(" › ", " ")) for n in failed})
+        return "%s -t %s" % (cmd, _q(["^(%s)$" % "|".join(pats)])) if pats else None
     if r == "vitest":
         files = sorted({n.split(" > ")[0].strip() for n in failed if " > " in n})
         return "%s %s" % (cmd, _q(files)) if files else None
@@ -114,6 +115,8 @@ def t_main(args):
         rr = _rerun(tst, failed) if failed else None
         if rr:
             c, text = run.run_capture(rr, d)
+            if re.search(r"No failed test found|No tests found|no tests ran|0 tests? (ran|run)|testsuite: 0 tests|ran 0 tests", text, re.I):
+                c = 0           # runner couldn't select them (renamed/removed tests): fall through to the full suite
             if c != 0:
                 print("t: rerun %d failure(s) → %s\n%s" % (len(failed), _short(rr, d), text))
                 code |= c
