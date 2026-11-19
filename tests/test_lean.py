@@ -2,7 +2,12 @@
 
 Run: python3 -m unittest discover -s tests -v
 """
-import io, json, os, subprocess, sys, tempfile, unittest
+import io
+import json
+import os
+import sys
+import tempfile
+import unittest
 from contextlib import redirect_stdout
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -23,7 +28,7 @@ class KeyFacts(unittest.TestCase):
     """(command, fixture, cwd, facts that must appear, max ratio shown/raw)"""
     CASES = [
         ("python -m pytest", "pytest.txt", PY,
-         ["5 failed", "2 passed", "test_add_big[6]", "test_add_big[9]", "test_name", "KeyError: 'name'", "calc.py:5", "assert 8 == (6 + 1)"], 0.4),
+         ["5 failed", "2 passed", "test_add_big[6|7|8|9]", "test_name", "KeyError: 'name'", "calc.py:5", "assert 8 == (6 + 1)"], 0.4),
         ("cargo test", "cargotest.txt", None,
          ["2 failed", "1 passed", "tests::big", "tests::big2", "src/lib.rs:6", "src/lib.rs:7", "left: 8", "right: 7", "big2 case"], 0.35),
         ("npx vitest run", "vitest.txt", None,
@@ -86,12 +91,15 @@ class Generic(unittest.TestCase):
         self.assertIn("tail 299", out)
         self.assertLess(len(out), len(raw) * 0.25)
 
-    def test_json_minify_is_lossless(self):
-        obj = {"items": [{"id": i, "name": "n%d" % i, "tags": ["a", "b"]} for i in range(60)]}
+    def test_json_compaction_is_lossless(self):
+        from lean import jsonc
+        obj = {"items": [{"id": i, "name": "n%d" % i, "tags": ["a", "b"], "meta": {"x": None}} for i in range(60)], "next": "é<>"}
         raw = json.dumps(obj, indent=2)
         out = filt.generic(raw)
-        self.assertEqual(json.loads(out), obj)
-        self.assertLess(len(out), len(raw) * 0.7)
+        body, note = out.rsplit("\n", 1)
+        self.assertEqual(jsonc.expand(json.loads(body)), obj)
+        self.assertLess(len(out), len(raw) * 0.4)
+        self.assertIn("_cols/_rows", note)
 
     def test_read_commands_untouched(self):
         raw = "x\n" * 5000
@@ -229,7 +237,18 @@ class Hooks(unittest.TestCase):
         r = self.run_hook({"hook_event_name": "PostToolUse", "tool_name": "mcp__db__query", "session_id": "s5",
                            "tool_response": [{"type": "text", "text": json.dumps(obj, indent=2)}]})
         out = r["hookSpecificOutput"]["updatedMCPToolOutput"]
-        self.assertEqual(json.loads(out[0]["text"]), obj)
+        from lean import jsonc
+        self.assertEqual(jsonc.expand(json.loads(out[0]["text"])), obj)      # lossless
+        self.assertIn("raw:", out[-1]["text"])
+
+    def test_mcp_string_response_and_prune(self):
+        obj = [{"login": "u%d" % i, "id": i, "avatar_url": "https://a/%d" % i, "html_url": "https://h/%d" % i, "node_id": "N%d" % i} for i in range(30)]
+        r = self.run_hook({"hook_event_name": "PostToolUse", "tool_name": "mcp__gh__users", "session_id": "s6", "tool_response": json.dumps(obj)})
+        out = r["hookSpecificOutput"]["updatedMCPToolOutput"]
+        from lean import jsonc
+        body, note = out.rsplit("\n", 1)
+        self.assertEqual(jsonc.expand(json.loads(body)), [{"login": o["login"], "id": o["id"], "html_url": o["html_url"]} for o in obj])
+        self.assertIn("dropped 60", note)
 
 
 class Usage(unittest.TestCase):

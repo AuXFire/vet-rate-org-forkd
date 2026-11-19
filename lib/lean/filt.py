@@ -6,7 +6,10 @@ Rules: success -> one line; failure -> everything that matters; unknown -> near-
 generic squeeze. Full raw output is always written to a log whose path is printed whenever
 anything was removed, so nothing is unrecoverable.
 """
-import json, os, re, time
+import json
+import os
+import re
+import time
 from . import parse, util
 
 SMALL = 1500          # chars; below this, output passes through (cleaned) untouched
@@ -146,9 +149,10 @@ def maybe_json(text):
 
 
 def generic(text):
-    j = maybe_json(text)
+    from . import jsonc
+    j, info = jsonc.compact(text)
     if j is not None:
-        return j
+        return j + "\n" + jsonc.note(info)
     return "\n".join(budget(squeeze(text.rstrip("\n").split("\n"))))
 
 
@@ -181,6 +185,28 @@ def _count_str(c):
     return ", ".join("%d %s" % (c[k], lab.get(k, k)) for k in order if c.get(k))
 
 
+def compact_names(names, limit=10):
+    """test_x[1], test_x[2] -> test_x[1|2]; drop a shared `file::` / `file > ` prefix after the first."""
+    groups, order = {}, []
+    for n in names:
+        m = re.match(r"^(.*?)\[(.*)\]$", n)
+        base, param = (m.group(1), m.group(2)) if m else (n, None)
+        if base not in groups:
+            groups[base] = []
+            order.append(base)
+        if param is not None:
+            groups[base].append(param)
+    items = [b + ("[%s]" % "|".join(groups[b]) if groups[b] else "") for b in order]
+    for sep in ("::", " > "):
+        if len(items) > 1 and all(sep in i for i in items):
+            pre = items[0].split(sep)[0]
+            if all(i.split(sep)[0] == pre for i in items):
+                items = [items[0]] + [i[len(pre) + len(sep):] for i in items[1:]]
+                break
+    more = len(items) - limit
+    return ", ".join(items[:limit]) + (" +%d more" % more if more > 0 else "")
+
+
 def render_tests(res, cwd, prev=None, elapsed=None):
     """prev: {name: normalized msg} from the last run of this runner in this repo (or None)."""
     fails = res["failures"]
@@ -211,19 +237,18 @@ def render_tests(res, cwd, prev=None, elapsed=None):
     for f in fails:
         groups.setdefault(_norm(f["msg"]) or f["name"], []).append(f)
     shown = 0
-    for key, fs in groups.items():
+    for fs in groups.values():
         f = fs[0]
         if all(x["name"] in unchanged for x in fs):
-            names = ", ".join(x["name"] for x in fs[:6]) + (" +%d" % (len(fs) - 6) if len(fs) > 6 else "")
-            out.append("= %s — unchanged: %s" % (names, f["msg"][:120]))
+            out.append("= %s — unchanged: %s" % (compact_names([x["name"] for x in fs], 6), f["msg"][:120]))
             continue
         if shown >= 15:
-            out.append("✗ %s — %s" % (", ".join(x["name"] for x in fs[:4]), f["msg"][:100]))
+            out.append("✗ %s — %s" % (compact_names([x["name"] for x in fs], 4), f["msg"][:100]))
             continue
         shown += 1
         if len(fs) > 1:
             out.append("×%d %s" % (len(fs), f["msg"]))
-            out.append("   " + ", ".join(x["name"] for x in fs[:10]) + (" +%d more" % (len(fs) - 10) if len(fs) > 10 else ""))
+            out.append("   " + compact_names([x["name"] for x in fs]))
         else:
             out.append("✗ %s" % f["name"])
             if f["msg"]:

@@ -1,7 +1,7 @@
 {
   "name": "lean",
   "displayName": "lean",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Cuts agent token use without losing information: compact tool output (full logs kept), smart test/check/outline/git commands, read guard, edit checks, and live token/savings tracking.",
   "license": "MIT",
   "keywords": [
@@ -12,6 +12,7 @@
     "agents"
   ],
   "author": {
-    "name": "lean contributors"
+    "name": "AuXFire",
+    "url": "https://github.com/AuXFire"
   }
 }

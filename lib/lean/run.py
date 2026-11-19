@@ -1,5 +1,8 @@
 """Run a shell command quietly, log raw output, print the filtered view, preserve exit code."""
-import os, signal, subprocess, sys, time
+import os
+import signal
+import subprocess
+import time
 from . import filt, util
 
 

@@ -1,5 +1,7 @@
 """Project detection: which stacks live here and how to test / check them."""
-import json, os, shutil
+import json
+import os
+import shutil
 from . import util
 
 MANIFESTS = ("package.json", "pyproject.toml", "setup.py", "setup.cfg", "pytest.ini", "tox.ini", "go.mod", "Cargo.toml", "requirements.txt", "conftest.py")
@@ -95,14 +97,17 @@ def detect(cwd=None):
         info["stacks"].append("py")
         pre = py_runner(d)
         info["tests"].append({"runner": "pytest", "cmd": pre + ("pytest" if pre else "python3 -m pytest")})
-        if shutil.which("ruff") or pre:
-            info["checks"].append({"name": "ruff", "cmd": pre + "ruff check --output-format concise ."})
         cfg = ""
         for f in ("pyproject.toml", "setup.cfg"):
             try:
-                cfg += open(os.path.join(d, f)).read()
-            except Exception:
+                with open(os.path.join(d, f)) as fh:
+                    cfg += fh.read()
+            except OSError:
                 pass
+        if shutil.which("ruff") or pre:
+            # no project ruff config -> correctness rules only (ruff's own defaults now include style rules)
+            own = "[tool.ruff" in cfg or _has(d, "ruff.toml", ".ruff.toml")
+            info["checks"].append({"name": "ruff", "cmd": pre + "ruff check --output-format concise ." + ("" if own else " --select E4,E7,E9,F")})
         if ("[tool.mypy]" in cfg or "[mypy]" in cfg or _has(d, "mypy.ini")) and (shutil.which("mypy") or pre):
             info["checks"].append({"name": "mypy", "cmd": pre + "mypy ."})
         if (_has(d, "pyrightconfig.json") or "[tool.pyright]" in cfg) and (shutil.which("pyright") or pre):

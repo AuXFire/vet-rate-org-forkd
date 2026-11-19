@@ -9,7 +9,13 @@ before n later requests (until the next compaction) the counterfactual cost is
   tokens × (cache-write rate + (n−1) × cache-read rate)
 because Claude Code writes new context to the prompt cache once and reads it on each later call.
 """
-import datetime as dt, glob, json, os, re, sys, time
+import datetime as dt
+import glob
+import json
+import os
+import re
+import sys
+import time
 from . import util
 
 # $/MTok: (input, output, cache_read). Cache writes: 5m = 1.25×input, 1h = 2×input.

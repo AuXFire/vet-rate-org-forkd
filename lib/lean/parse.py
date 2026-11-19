@@ -172,12 +172,11 @@ def gotest(text):
     res = {"runner": "go", "counts": {}, "failures": []}
     ok = len([l for l in lines if re.match(r"^ok\s+\S+", l)])
     fpk = [l for l in lines if re.match(r"^FAIL\s+\S+", l)]
-    cur, depth = None, 0
+    cur = None
     for l in lines:
         m = re.match(r"^(\s*)--- FAIL: (\S+)", l)
         if m:
             cur = _fail(m.group(2), "", None, [])
-            depth = len(m.group(1))
             res["failures"].append(cur)
             continue
         if cur is not None:

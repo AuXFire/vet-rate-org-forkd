@@ -8,7 +8,13 @@ SessionStart               -> env file (quiet tools) + project brief; + task sta
 SubagentStart              -> short brief
 PreCompact                 -> stdout steers the summary to keep task state
 """
-import ast, json, os, re, shutil, sys, time
+import ast
+import json
+import os
+import re
+import shutil
+import sys
+import time
 from . import filt, util
 
 CODE_GUARD_EXT = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".rs", ".java", ".kt", ".cs", ".rb", ".php",
@@ -150,6 +156,10 @@ def on_pre_read(ev):
     limit = int(util.cfg().get("read_guard_lines", 400))
     if ext not in CODE_GUARD_EXT or limit <= 0:
         return
+    if re.search(r"/(skills|plugins|bundled-skills|\.claude)/|(SKILL|CLAUDE|AGENTS)\.md$", p):
+        return          # instructions the agent was told to read in full
+    if ext in (".md", ".mdx"):
+        limit *= 2
     try:
         with open(p, errors="replace") as fh:
             text = fh.read()
@@ -196,7 +206,6 @@ def on_post_bash(ev):
     code = tr.get("exitCode", tr.get("returnCode", tr.get("code")))
     code = code if isinstance(code, int) else None
     shown, kind = filt.filter_output(cmd, raw, ev.get("cwd"), code=code)
-    clean_len = len(util.clean(raw))
     if kind in ("raw", "read") or len(shown) >= len(raw) * 0.92:
         return
     log = util.save_log(raw, (m[0] if m else "bash"))
@@ -253,25 +262,33 @@ def on_post_failure(ev):
 
 
 def on_post_mcp(ev):
-    tr = ev.get("tool_response")
-    s = tr if isinstance(tr, str) else None
-    if isinstance(tr, list) and tr and all(isinstance(x, dict) and x.get("type") == "text" for x in tr):
-        changed, new = 0, []
-        for x in tr:
-            j = filt.maybe_json(x.get("text", ""))
-            if j is not None and len(j) < len(x["text"]) * 0.9:
-                changed += len(x["text"]) - len(j)
-                x = dict(x, text=j)
-            new.append(x)
-        if changed:
-            util.metric("mcp:json", sum(len(x.get("text", "")) for x in tr), sum(len(x.get("text", "")) for x in new), sid=ev.get("session_id"), cmd=ev.get("tool_name"))
-            emit({"hookSpecificOutput": {"hookEventName": "PostToolUse", "updatedMCPToolOutput": new}})
+    """Any MCP server (current or added later): compact JSON text results; raw kept in a log."""
+    from . import jsonc
+    tr, sid, tool = ev.get("tool_response"), ev.get("session_id"), ev.get("tool_name")
+    blocks = tr if isinstance(tr, list) else [{"type": "text", "text": tr}] if isinstance(tr, str) else None
+    if not blocks or not all(isinstance(x, dict) for x in blocks):
         return
-    if s:
-        j = filt.maybe_json(s)
-        if j is not None and len(j) < len(s) * 0.9:
-            util.metric("mcp:json", len(s), len(j), sid=ev.get("session_id"), cmd=ev.get("tool_name"))
-            emit({"hookSpecificOutput": {"hookEventName": "PostToolUse", "updatedMCPToolOutput": j}})
+    new, raw_len, info_all = [], 0, {"pruned": 0, "tables": 0}
+    for x in blocks:
+        t = x.get("text") if x.get("type") == "text" else None
+        if isinstance(t, str):
+            raw_len += len(t)
+            out, info = jsonc.compact(t)
+            if out is not None:
+                x = dict(x, text=out)
+                for k in info_all:
+                    info_all[k] += info[k]
+        new.append(x)
+    shown = sum(len(x.get("text", "")) for x in new if isinstance(x.get("text"), str))
+    if shown >= raw_len * 0.92:
+        return
+    log = util.save_log("\n".join(x.get("text", "") for x in blocks if isinstance(x.get("text"), str)), tool.split("__")[-1])
+    note = jsonc.note(info_all, log)
+    util.metric("mcp:" + tool.split("__")[1] if tool.count("__") >= 2 else "mcp", raw_len, shown + len(note), sid=sid, cmd=tool)
+    if isinstance(tr, str):
+        emit({"hookSpecificOutput": {"hookEventName": "PostToolUse", "updatedMCPToolOutput": new[0]["text"] + "\n" + note}})
+    else:
+        emit({"hookSpecificOutput": {"hookEventName": "PostToolUse", "updatedMCPToolOutput": new + [{"type": "text", "text": note}]}})
 
 
 def quick_check(p):
@@ -383,7 +400,7 @@ def main():
             on_subagent_start(ev)
         elif name == "PreCompact":
             on_pre_compact(ev)
-    except Exception as e:
+    except Exception:
         if debug:
             import traceback
             with open(util.path("debug", "errors.log"), "a") as f:

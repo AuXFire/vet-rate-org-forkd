@@ -1,5 +1,10 @@
 """Shared helpers: paths, cleaning, logs, metrics, per-project state. Stdlib only."""
-import hashlib, json, os, re, subprocess, time
+import hashlib
+import json
+import os
+import re
+import subprocess
+import time
 
 HOME = os.environ.get("LEAN_HOME") or os.path.expanduser("~/.lean")
 DEFAULT_CHARS_PER_TOKEN = 3.6  # conservative for code/logs; `x calibrate` refines it

@@ -7,7 +7,13 @@ o def <name>        find definition(s) anywhere in the repo and print body
 o refs <name>       references grouped by file
 o def pkg.attr      look inside an installed dependency (python / node / go / cargo)
 """
-import ast, glob, json, os, re, shutil, subprocess, sys
+import ast
+import glob
+import json
+import os
+import re
+import shutil
+import sys
 from . import util
 
 CODE_EXT = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".rs", ".java", ".kt", ".cs", ".rb", ".php", ".c", ".h", ".cc", ".cpp", ".hpp", ".swift", ".scala", ".vue", ".svelte"}

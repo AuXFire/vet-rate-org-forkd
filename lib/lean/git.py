@@ -5,7 +5,6 @@ g d [args]       diffstat + tight diff (-U1), lockfile/generated hunks collapsed
 g l [n] [args]   short log (default 15)
 g <anything>     plain git passthrough with quiet env (output filtered)
 """
-import os, re
 from . import filt, run, util
 
 G = ["git", "-c", "color.ui=never", "-c", "core.pager=cat"]

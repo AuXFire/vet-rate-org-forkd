@@ -5,7 +5,8 @@ sub PATTERN REPLACEMENT [paths...] [-w] [-r] [-i] [--apply] [-g GLOB]
   -w  whole word              -i  ignore case
   -g  file glob filter (repeatable), e.g. -g '*.ts'
 """
-import os, re, sys
+import os
+import re
 from . import util
 
 
@@ -26,6 +27,8 @@ def main(args):
             pos.append(a)
         i += 1
     pat, rep, paths = pos[0], pos[1], pos[2:] or ["."]
+    if not flags["-r"]:   # sed-style escapes in literal mode
+        pat, rep = (x.replace("\\n", "\n").replace("\\t", "\t") for x in (pat, rep))
     rx_src = pat if flags["-r"] else re.escape(pat)
     if flags["-w"]:
         rx_src = r"\b%s\b" % rx_src
@@ -36,7 +39,8 @@ def main(args):
         return 2
     if not flags["-r"]:
         rep = rep.replace("\\", "\\\\")
-    cmd = ["rg", "-l", "--hidden", "-g", "!.git"] + sum((["-g", g] for g in globs), []) + (["-i"] if flags["-i"] else [])
+    multi = "\n" in pat or "\\n" in rx_src
+    cmd = ["rg", "-l", "--hidden", "-g", "!.git"] + (["-U"] if multi else []) + sum((["-g", g] for g in globs), []) + (["-i"] if flags["-i"] else [])
     cmd += ["-e", rx_src if flags["-r"] or flags["-w"] else pat] + ([] if flags["-r"] or flags["-w"] else ["-F"]) + paths
     c, out = util.sh(cmd, timeout=60)
     files = [f for f in out.split("\n") if f.strip() and os.path.isfile(f)]
@@ -61,9 +65,15 @@ def main(args):
         if flags["--apply"]:
             with open(f, "w") as fh:
                 fh.write(new)
+    nfiles = len([r for r in report if not r.startswith("  ")])
+    if flags["--apply"]:
+        from .hook import quick_check
+        bad = [e for e in (quick_check(r.rsplit(" (", 1)[0]) for r in report if not r.startswith("  ")) if e]
+        if bad:
+            report.append("✗ check after apply:\n" + "\n".join(bad))
     if not total:
         print("sub: no matches")
         return 1
-    head = "%s %d replacements in %d files" % ("applied" if flags["--apply"] else "dry-run:", total, len([r for r in report if not r.startswith("  ")]))
+    head = "%s %d replacements in %d files" % ("applied" if flags["--apply"] else "dry-run:", total, nfiles)
     print(head + "\n" + "\n".join(report) + ("" if flags["--apply"] else "\n(re-run with --apply to write)"))
     return 0

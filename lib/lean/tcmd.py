@@ -1,5 +1,9 @@
 """`t` (test) and `c` (check) commands."""
-import os, re, shlex, subprocess, sys, threading, time
+import os
+import re
+import shlex
+import threading
+import time
 from . import detect, filt, run, util
 
 T_HELP = """t            smart: rerun last failures → if green, full suite; else related-to-changes; else full
@@ -119,7 +123,7 @@ def c_main(args):
     for x in th:
         x.join()
     ok, parts, raw_total, code = [], [], 0, 0
-    for ck, (rc, raw, dt) in zip(checks, results):
+    for ck, (rc, raw, _dt) in zip(checks, results):
         clean = util.clean(raw)
         raw_total += len(clean)
         diags = filt.parse.diagnostics(clean)

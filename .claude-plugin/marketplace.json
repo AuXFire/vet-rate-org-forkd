@@ -1,7 +1,8 @@
 {
   "name": "lean",
   "owner": {
-    "name": "lean"
+    "name": "AuXFire",
+    "url": "https://github.com/AuXFire"
   },
   "plugins": [
     {

@@ -1,5 +1,7 @@
 # lean
 
+by [AuXFire](https://github.com/AuXFire)
+
 Token-efficient tooling for Claude Code and other coding agents. It cuts what tool output costs in context without losing information, so more of the model's budget goes to the actual task.
 
 Most of the token cost in agent work isn't the model's writing. It's tool output (test logs, build errors, diffs, whole-file reads) that enters the context and is re-sent with every later request. lean compresses that output at the source, and every compression can be recovered.
@@ -16,13 +18,14 @@ Most of the token cost in agent work isn't the model's writing. It's tool output
 
 | Part | How it saves tokens |
 |---|---|
-| **Output filter** (PostToolUse hook) | Test, build, lint, install, git and docker output from **successful** calls is replaced with a compact view. Unknown commands get a near-lossless squeeze: ANSI and progress redraws removed, repeats collapsed, very long lines capped, head/tail kept along with every error line. Pretty-printed JSON is minified (lossless), including MCP tool results. Lockfile and generated-file hunks in diffs collapse to `+N −M`. |
+| **Output filter** (PostToolUse hook) | Test, build, lint, install, git and docker output from **successful** calls is replaced with a compact view. Unknown commands get a near-lossless squeeze: ANSI and progress redraws removed, repeats collapsed, very long lines capped, head/tail kept along with every error line. Lockfile and generated-file hunks in diffs collapse to `+N −M`. |
+| **MCP and JSON compaction** | Every MCP server is covered automatically, including ones added later, through the `mcp__.*` hook. The same applies to JSON printed by shell commands (`gh api`, `curl`). Lists of same-shaped objects become `{"_cols":[…],"_rows":[[…]]}`, which is lossless, and JSON is minified with escapes written as plain characters. Link-noise keys (`*_url` except `html_url`/`url`, `node_id`, `_links`) are dropped, recoverably, since the raw response is logged; turn that off with `x config json_prune false`. Measured on a GitHub list call: −27% for 3 items, and the saving grows with list length. |
 | **`t`** smart test | Detects pytest / jest / vitest / go / cargo. Reruns the last failures (`--lf`, `--onlyFailures`, `-run`, name filters), then runs the full suite once they pass. With no previous failures, it runs only tests related to changed files (`vitest related`, `jest --findRelatedTests`, changed Go packages, `test_<module>.py`). Repeat runs show only what changed: `[Δ 2 fixed · 1 still]`, and an unchanged failure takes one line. |
-| **`c`** check | Typecheck, lint, vet and clippy for the nearest project, run in parallel. Errors are grouped by file and repeated messages merged. Errors inside `node_modules`/`site-packages` collapse to one line, since they're usually a config problem. |
+| **`c`** check | Typecheck, lint, vet and clippy for the nearest project, run in parallel. It respects the project's own lint config; without one, ruff runs only its correctness rules, because its built-in defaults now include style rules. Errors are grouped by file and repeated messages merged. Errors inside `node_modules`/`site-packages` collapse to one line, since they're usually a config problem. |
 | **`o`** navigate | `o file` → symbols with line ranges · `o dir` → repo map · `o def X` → definition body · `o refs X` → references by file · `o def zod.object` → looks inside installed dependencies (node / python / go / cargo, `.d.ts` first). |
 | **`g`** git | One-line status, diff with tight context and lockfiles collapsed, short log. |
-| **`sub`** | Search and replace across files as a dry-run diff, then `--apply`. Replaces dozens of Edit calls. |
-| **Read guard** (PreToolUse) | A full Read of a code file over 400 lines is blocked once, and the outline is returned instead. Reading the same file again goes through. Follow-up partial reads and full re-reads are counted as costs, so the reported savings stay honest. |
+| **`sub`** | Search and replace across files as a dry-run diff, then `--apply`. It understands sed-style `\n`/`\t`, handles patterns that span lines, and runs the edit check on every file it changes. Replaces dozens of Edit calls. |
+| **Read guard** (PreToolUse) | A full Read of a code file over 400 lines (markdown: 800) is blocked once, and the outline is returned instead. Reading the same file again goes through. Skill, plugin and `.claude` directories, and `SKILL.md`/`CLAUDE.md`/`AGENTS.md`, are never guarded, because the agent was told to read them in full. Follow-up partial reads and full re-reads are counted as costs, so the reported savings stay honest. |
 | **Edit check** (PostToolUse) | After each Edit or Write, a check of under a second for syntax errors and undefined names: `ast`/ruff, `node --check`, esbuild, gofmt, rustfmt. It's silent on success and reports one line on failure, which catches mistakes before a test run. |
 | **Session brief** (SessionStart / SubagentStart) | About 4 lines covering repo, branch, stack, test and check commands, top directories, and the tools. It replaces the usual 3–5 exploratory calls. It's injected once per session, so the prompt cache stays intact. |
 | **Task state** (SessionStart on resume or compaction, PreCompact) | Files edited, last test result and failing tests, and last check result. After compaction the agent gets this back in a few lines and doesn't have to rediscover it. |
@@ -76,7 +79,12 @@ git clone <this repo> ~/lean && ~/lean/install.sh      # links t c o g sub x int
 | `rewrite` | auto | `always` / `never`. Auto means only in bypassPermissions mode. |
 | `quiet_env` | true | Export quiet variables at session start. |
 | `chars_per_token` | 3.6 | Set by `x calibrate`. |
+| `json_prune` | true | Drop link-noise keys from large JSON. The raw response is always logged. |
 | `debug` | false | Logs hook payloads to `~/.lean/debug/`. |
+
+## Skills
+
+Skill content is instructions, so lean never compresses it. Skills still benefit indirectly: their scripts' output, MCP calls and test runs go through the same filters. `x waste` shows what each tool, MCP server and skill load costs, so a new heavy source shows up right away.
 
 ## Tests
 
