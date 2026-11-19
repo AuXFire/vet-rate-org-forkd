@@ -38,19 +38,25 @@ def execute(cmd, cwd=None, timeout=None, mild=False):
     return p.returncode if p.returncode is not None else 130, raw, time.time() - t0
 
 
+def render(cmd, raw, code, dt, cwd, label=None, show_cmd=True, kind_hint=None):
+    """Filtered text exactly as `t` / `c` / `x run` print it. -> (text, raw_clean_len, kind)"""
+    shown, kind = filt.filter_output(cmd, raw, cwd, code=code, elapsed=dt)
+    clean = util.clean(raw)
+    log = util.save_log(raw, (label or cmd).split()[0] if (label or cmd).split() else "out")
+    footer = "[%d lines → %s]" % (clean.count("\n") + 1, log) if code not in (0, None) else ""
+    if len(shown) + len(footer) >= len(clean) * 0.9:     # filtering doesn't pay for itself: show raw, no footer
+        shown, footer = clean, ""
+    lines = ["$ " + (label or cmd)] if show_cmd else []
+    lines.append(shown.rstrip("\n"))
+    if footer:
+        lines.append(footer)
+    return "\n".join(lines), len(clean), kind_hint or kind
+
+
 def run(cmd, cwd=None, label=None, kind_hint=None, timeout=None, show_cmd=True, mild=False):
     cwd = cwd or os.getcwd()
     code, raw, dt = execute(cmd, cwd, timeout, mild)
-    shown, kind = filt.filter_output(cmd, raw, cwd, code=code, elapsed=dt)
-    lines = []
-    if show_cmd:
-        lines.append("$ " + (label or cmd))
-    lines.append(shown.rstrip("\n"))
-    clean = util.clean(raw)
-    log = util.save_log(raw, (label or cmd).split()[0] if (label or cmd).split() else "out")
-    if code not in (0, None):     # success needs no footer; `x last` still recovers the raw output
-        lines.append("[exit %d · raw %d lines → %s]" % (code, clean.count("\n") + 1, log) if len(shown) < len(clean) * 0.9 else "[exit %d]" % code)
-    text = "\n".join(l for l in lines if l is not None)
+    text, raw_len, kind = render(cmd, raw, code, dt, cwd, label, show_cmd, kind_hint)
     print(text)
-    util.metric("cmd:" + (kind_hint or kind), len(clean), len(text), cmd=(label or cmd)[:120], code=code, dt=round(dt, 2))
+    util.metric("cmd:" + kind, raw_len, len(text), cmd=(label or cmd)[:120], code=code, dt=round(dt, 2))
     return code

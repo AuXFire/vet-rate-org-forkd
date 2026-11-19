@@ -38,7 +38,12 @@ def _table(o, n):
             keys = list(items[0].keys())
             if len(keys) >= 2 and all(list(x.keys()) == keys for x in items):
                 n[0] += 1
-                return {"_cols": keys, "_rows": [[x[k] for k in keys] for x in items]}
+                same = {k: items[0][k] for k in keys if all(x[k] == items[0][k] for x in items)} if len(items) >= 5 else {}
+                cols = [k for k in keys if k not in same]
+                t = {"_cols": cols, "_rows": [[x[k] for k in cols] for x in items]}
+                if same:
+                    t["_same"] = same          # columns with one value in every row, stated once
+                return t
         return items
     return o
 
@@ -67,7 +72,7 @@ def compact(text, prune=None, min_len=800):
 def note(info, log=None):
     bits = []
     if info.get("tables"):
-        bits.append("lists of same-shaped objects as _cols/_rows")
+        bits.append("lists of same-shaped objects as _cols/_rows (+_same: value shared by every row)")
     if info.get("pruned"):
         bits.append("dropped %d *_url/node_id fields" % info["pruned"])
     return "[lean: json compacted%s%s]" % ((": " + "; ".join(bits)) if bits else "", (" · raw: %s" % log) if log else "")
@@ -76,8 +81,11 @@ def note(info, log=None):
 def expand(o):
     """Inverse of tabularization (used by tests; also documents the format)."""
     if isinstance(o, dict):
-        if set(o) == {"_cols", "_rows"}:
-            return [dict(zip(o["_cols"], [expand(v) for v in r])) for r in o["_rows"]]
+        if set(o) in ({"_cols", "_rows"}, {"_cols", "_rows", "_same"}):
+            rows = [dict(zip(o["_cols"], [expand(v) for v in r])) for r in o["_rows"]]
+            for r in rows:
+                r.update(expand(o.get("_same", {})))
+            return rows
         return {k: expand(v) for k, v in o.items()}
     if isinstance(o, list):
         return [expand(x) for x in o]

@@ -22,12 +22,15 @@ ERRORISH = re.compile(r"(?i)(\berror\b|\bfailed\b|\bfatal\b|\bpanic\b|exception|
 # commands whose output IS the content the agent asked for: never touch beyond ANSI cleanup
 READ_CMDS = re.compile(r"^(cat|head|tail|sed|nl|bat|less|more|awk|jq|yq|wc|ls|tree|find|fd|file|stat|echo|printf|env|which|type|pwd|diff|cmp|xxd|od|base64|python3? -c|node -e|o|g|t|c|sub|x|lean)\b")
 GIT_DIFF = re.compile(r"^git (diff|show|log -p|stash show)")
-TEST = re.compile(r"(\bpytest\b|py\.test|-m pytest|\bjest\b|\bvitest\b|\bgo test\b|\bcargo (test|nextest)\b|\b(npm|pnpm|yarn|bun)( run)? test\b|\bmake test\b|\btox\b|\bnox\b)")
+TEST = re.compile(r"(\bpytest\b|py\.test|-m pytest|\bjest\b|\bvitest\b|\bgo test\b|\bcargo (test|nextest)\b|\b(npm|pnpm|yarn|bun)( run)? test\b|\bmake test\b|\btox\b|\bnox\b|"
+                  r"\bmvnw?\b.*\b(test|verify)\b|\bgradlew?\b.*\b(test|check)\b|\brspec\b|\brake test\b|\bruby -I\w* \S*test|\bphpunit\b|\bctest\b|\bdotnet test\b|\bmix test\b)")
 BUILD = re.compile(r"(\btsc\b|\beslint\b|\bruff\b|\bmypy\b|\bpyright\b|\bflake8\b|\bpylint\b|\bgo (build|vet)\b|\bgolangci-lint\b|\bcargo (build|check|clippy)\b|\bmake\b|\bgcc\b|\bg\+\+\b|\bclang\b|\b(npm|pnpm|yarn|bun)( run)? (build|lint|typecheck|check|type-check)\b|\bnext build\b|\bvite build\b|\bwebpack\b|\bbiome\b|\bprettier --check\b|\bgradle\b|\bmvn\b)")
 INSTALL = re.compile(r"(\b(npm|pnpm|bun) (i|install|ci|add)\b|\byarn( install| add|$)|\bpip3? install\b|\buv (pip install|sync|add|lock)\b|\bpoetry (install|add|lock)\b|\bcargo (fetch|install|update)\b|\bgo (mod (download|tidy)|get|install)\b|\bapt(-get)? (install|update|upgrade)\b|\bbrew (install|upgrade)\b|\bbundle install\b|\bgem install\b|\bcomposer install\b)")
 GIT_NET = re.compile(r"^git (push|pull|fetch|clone|checkout|switch|merge|rebase|submodule|lfs)\b")
 DOCKER = re.compile(r"^docker( compose| buildx)? (build|pull|push|compose|up)\b")
 
+NOISE = re.compile(r"^(\[INFO\] Download(ing|ed) from |Download(ing|ed) https?://|Progress \(\d+\)|Picked up (JAVA_TOOL_OPTIONS|_JAVA_OPTIONS)|\[INFO\] *$|\[ERROR\] *$|"
+                   r"\[ERROR\] (To see the full stack trace|Re-run Maven using|For more information about the errors|\[Help 1\]|-> \[Help 1\]))")
 NOISY_GIT = re.compile(r"^(remote: (Enumerating|Counting|Compressing|Total|Resolving)|Enumerating objects|Counting objects|Compressing objects|Writing objects|Total \d+|Delta compression|Resolving deltas|Receiving objects|Unpacking objects|Updating files|remote:\s*$)")
 GENERATED = re.compile(r"(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|Cargo\.lock|poetry\.lock|uv\.lock|go\.sum|composer\.lock|Gemfile\.lock|\.min\.(js|css)|\.map$|__snapshots__/|\.snap$|(^|/)dist/|(^|/)build/|\.pb\.go$|_pb2\.py$|\.generated\.)")
 
@@ -148,12 +151,16 @@ def maybe_json(text):
         return None
 
 
+def drop_noise(text):
+    return "\n".join(l for l in text.split("\n") if not NOISE.match(l))
+
+
 def generic(text):
     from . import jsonc
     j, info = jsonc.compact(text)
     if j is not None:
         return j + "\n" + jsonc.note(info)
-    return "\n".join(budget(squeeze(text.rstrip("\n").split("\n"))))
+    return "\n".join(budget(squeeze(drop_noise(text).rstrip("\n").split("\n"))))
 
 
 # ---------------------------------------------------------------- tests
@@ -180,13 +187,71 @@ def _snippet(loc, cwd, ctx=1):
 
 
 def _count_str(c):
-    order = ["failed", "errors", "files_failed", "passed", "skipped", "xfailed", "xpassed", "ignored", "todo", "pkgs_ok", "pkgs_failed"]
+    order = ["failed", "errors", "files_failed", "passed", "skipped", "warnings", "xfailed", "xpassed", "ignored", "todo", "pkgs_ok", "pkgs_failed"]
     lab = {"pkgs_ok": "pkgs ok", "pkgs_failed": "pkgs failed", "files_failed": "files failed"}
     return ", ".join("%d %s" % (c[k], lab.get(k, k)) for k in order if c.get(k))
 
 
-def compact_names(names, limit=10):
-    """test_x[1], test_x[2] -> test_x[1|2]; drop a shared `file::` / `file > ` prefix after the first."""
+NUM = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def _brace(vals, cap=12):
+    u = []
+    for v in vals:
+        if v not in u:
+            u.append(v)
+    if len(u) == 1:
+        return u[0]
+    if len(u) >= 4 and all(re.fullmatch(r"-?\d+", v) for v in u):
+        ints = [int(v) for v in u]
+        step = ints[1] - ints[0]
+        if step and all(ints[i + 1] - ints[i] == step for i in range(len(ints) - 1)):
+            return "{%d..%d%s}" % (ints[0], ints[-1], "" if step == 1 else "/%d" % step)
+    return "{" + "|".join(u[:cap]) + ("|…+%d" % (len(u) - cap) if len(u) > cap else "") + "}"
+
+
+def merge_texts(texts):
+    """Texts identical except for numbers -> one template with {a|b} slots / {a..b/step} ranges. None if not mergeable."""
+    if len(set(texts)) == 1:
+        return texts[0]
+    skel = [NUM.split(t) for t in texts]
+    if any(x != skel[0] for x in skel[1:]):
+        return None
+    nums = [NUM.findall(t) for t in texts]
+    out = skel[0][0]
+    for i in range(len(nums[0])):
+        out += _brace([n[i] for n in nums]) + skel[0][i + 1]
+    return out
+
+
+BRACE = re.compile(r"\{(-?\d+)\.\.(-?\d+)(?:/(\d+))?\}|\{([^{}]*\|[^{}]*)\}")
+
+
+def expand_braces(text, cap=400):
+    """Inverse of merge_texts / compact_names, line by line: every concrete variant (tests prove lossless-ness)."""
+    out = []
+    for line in text.split("\n"):
+        variants = [line]
+        while any(BRACE.search(v) for v in variants) and len(variants) < cap:
+            nxt = []
+            for v in variants:
+                m = BRACE.search(v)
+                if not m:
+                    nxt.append(v)
+                    continue
+                if m.group(4) is not None:
+                    alts = [a for a in m.group(4).split("|") if not a.startswith("…")]
+                else:
+                    a, b, st = int(m.group(1)), int(m.group(2)), int(m.group(3) or 1)
+                    alts = [str(x) for x in range(a, b + (1 if b >= a else -1), st if b >= a else -st)]
+                nxt += [v[:m.start()] + x + v[m.end():] for x in alts]
+            variants = nxt
+        out += variants
+    return "\n".join(out)
+
+
+def compact_names(names, limit=60):
+    """test_x[1], test_x[2] -> test_x[1|2]; case 5 … case 195 -> case {5..195/5}; shared `file::` prefix printed once."""
     groups, order = {}, []
     for n in names:
         m = re.match(r"^(.*?)\[(.*)\]$", n)
@@ -197,6 +262,17 @@ def compact_names(names, limit=10):
         if param is not None:
             groups[base].append(param)
     items = [b + ("[%s]" % "|".join(groups[b]) if groups[b] else "") for b in order]
+    tmpl, torder = {}, []
+    for it in items:
+        k = tuple(NUM.split(it))
+        if k not in tmpl:
+            tmpl[k] = []
+            torder.append(k)
+        tmpl[k].append(it)
+    items = []
+    for k in torder:
+        g = tmpl[k]
+        items += [merge_texts(g)] if len(g) >= 3 else g
     for sep in ("::", " > "):
         if len(items) > 1 and all(sep in i for i in items):
             pre = items[0].split(sep)[0]
@@ -204,7 +280,25 @@ def compact_names(names, limit=10):
                 items = [items[0]] + [i[len(pre) + len(sep):] for i in items[1:]]
                 break
     more = len(items) - limit
-    return ", ".join(items[:limit]) + (" +%d more" % more if more > 0 else "")
+    return ", ".join(items[:limit]) + (" +%d more (see log)" % more if more > 0 else "")
+
+
+def _pick_detail(d, cap=8):
+    """Keep assertion diffs (+/- lines) over context when trimming."""
+    if len(d) <= cap:
+        return d
+    diff = [l for l in d if l[:1] in "+-" and not l.startswith(("- Expected", "+ Received", "+++", "---"))]
+    keep = d[:2] + [l for l in diff if l not in d[:2]]
+    return keep[:cap + 4]
+
+
+def _rel(path, cwd):
+    try:
+        if os.path.isabs(path) and cwd and path.startswith(os.path.abspath(cwd) + os.sep):
+            return os.path.relpath(path, cwd)
+    except Exception:
+        pass
+    return path
 
 
 def render_tests(res, cwd, prev=None, elapsed=None):
@@ -239,25 +333,37 @@ def render_tests(res, cwd, prev=None, elapsed=None):
     shown = 0
     for fs in groups.values():
         f = fs[0]
-        if all(x["name"] in unchanged for x in fs):
-            out.append("= %s — unchanged: %s" % (compact_names([x["name"] for x in fs], 6), f["msg"][:120]))
+        names = [x["name"] for x in fs]
+        msg = (merge_texts([x["msg"] for x in fs]) or f["msg"]) if len(fs) > 1 else f["msg"]
+        if all(n in unchanged for n in names):
+            out.append("= %s — unchanged: %s" % (compact_names(names, 8), msg[:160]))
             continue
         if shown >= 15:
-            out.append("✗ %s — %s" % (compact_names([x["name"] for x in fs], 4), f["msg"][:100]))
+            out.append("✗ %s — %s" % (compact_names(names, 4), msg[:120]))
             continue
         shown += 1
         if len(fs) > 1:
-            out.append("×%d %s" % (len(fs), f["msg"]))
-            out.append("   " + compact_names([x["name"] for x in fs]))
+            out.append("×%d %s" % (len(fs), msg))
+            out.append("   " + compact_names(names))
         else:
             out.append("✗ %s" % f["name"])
-            if f["msg"]:
-                out.append("   " + f["msg"])
-        for d in f["detail"][:8]:
+            if msg:
+                out.append("   " + msg)
+        detail = f["detail"]
+        if len(fs) > 1 and all(len(x["detail"]) == len(detail) for x in fs):
+            detail = [merge_texts([x["detail"][i] for x in fs]) or detail[i] for i in range(len(detail))]
+        for d in _pick_detail(detail):
             out.append("   " + d[:200])
         if f["loc"]:
-            out.append("   @ %s:%d" % f["loc"])
+            out.append("   @ %s:%d" % (_rel(f["loc"][0], cwd), f["loc"][1]))
             out += _snippet(f["loc"], cwd)
+    w = res.get("warnings") or []
+    if w:
+        by = {}
+        for loc, typ, m in w:
+            by.setdefault((typ, _norm(m), loc), []).append(m)
+        parts = ["×%d %s: %s @ %s" % (len(ms), typ, merge_texts(ms) or ms[0], _rel(loc, cwd)) for (typ, _, loc), ms in sorted(by.items(), key=lambda kv: -len(kv[1]))[:5]]
+        out.append("⚠ " + " · ".join(parts))
     return "\n".join(out), now
 
 
@@ -273,7 +379,11 @@ def test_result(text, cmd=""):
         hint = ["go"]
     elif "cargo" in cmd:
         hint = ["cargo"]
-    for name in hint + [n for n in ("pytest", "vitest", "jest", "go", "cargo") if n not in hint]:
+    elif re.search(r"\b(mvnw?|gradlew?)\b", cmd):
+        hint = ["junit"]
+    elif "rspec" in cmd:
+        hint = ["rspec"]
+    for name in hint + [n for n in parse.TEST_PARSERS if n not in hint]:
         try:
             r = parse.TEST_PARSERS[name](text)
         except Exception:
@@ -312,7 +422,17 @@ def tests(text, cwd, cmd="", elapsed=None, code=None):
 DEP_PATH = re.compile(r"(^|/)(node_modules|site-packages|dist-packages|\.cargo/registry|pkg/mod|vendor)/")
 
 
-def render_diags(diags, tool=""):
+def _locs(ds, max_files=12):
+    by = {}
+    for d in ds:
+        by.setdefault(d["f"], []).append(d["l"])
+    parts = ["%s:%s" % (f, _brace([str(x) for x in sorted(set(ls))], cap=40)) for f, ls in list(by.items())[:max_files]]
+    return ", ".join(parts) + (" +%d files (see log)" % (len(by) - max_files) if len(by) > max_files else "")
+
+
+def render_diags(diags, tool="", cwd=None):
+    if cwd:
+        diags = [dict(d, f=_rel(d["f"], cwd)) for d in diags]
     deps = [d for d in diags if DEP_PATH.search(d["f"])]
     diags = [d for d in diags if not DEP_PATH.search(d["f"])] if deps and len(deps) < len(diags) + 1 else diags
     out_dep = None
@@ -333,13 +453,14 @@ def render_diags(diags, tool=""):
     show = errs + (warns if len(warns) <= 12 or not errs else [])
     groups = {}
     for d in show:
-        groups.setdefault((d["code"], _norm(d["m"])), []).append(d)
+        groups.setdefault((d["s"], _norm(d["m"])), []).append(d)
     single = []
     lines = 0
-    for (code, _), ds in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+    for _, ds in sorted(groups.items(), key=lambda kv: -len(kv[1])):
         if len(ds) >= 3:
-            locs = ", ".join("%s:%d" % (d["f"], d["l"]) for d in ds[:8]) + (" +%d" % (len(ds) - 8) if len(ds) > 8 else "")
-            out.append("×%d %s%s — %s" % (len(ds), code + " " if code else "", ds[0]["m"][:160], locs))
+            code = next((d["code"] for d in ds if d["code"]), "")   # rustc names the lint on the first hit only
+            msg = merge_texts([d["m"] for d in ds]) or ds[0]["m"]
+            out.append("×%d %s%s — %s" % (len(ds), code + " " if code else "", msg[:300], _locs(ds)))
             lines += 1
         else:
             single += ds
@@ -362,20 +483,24 @@ def render_diags(diags, tool=""):
     return "\n".join(out)
 
 
-def build(text, cmd, code=None):
+def build(text, cmd, code=None, cwd=None):
     diags = parse.diagnostics(text)
     tool = (main_segment(cmd).split() or [""])[0]
     errs = [d for d in diags if d["s"] == "error"]
     clean_run = code == 0 or (code is None and not ERRORISH.search(text))
     if not errs and clean_run:
         if diags:
-            return render_diags(diags, tool).replace("⚠", "✓", 1)
+            return render_diags(diags, tool, cwd).replace("⚠", "✓", 1)
         return "✓ %s ok" % (main_segment(cmd)[:60] or tool)
     if errs:
-        body = render_diags(diags, tool)
+        body = render_diags(diags, tool, cwd)
         # errors the diagnostic parser could not structure (linker, config) -> keep them
-        extra = [l for l in text.split("\n") if ERRORISH.search(l) and not any(d["m"][:40] in l for d in diags)]
-        extra = [l for l in extra if not re.match(r"^(error: (could not compile|aborting)|Found \d+ error|\d+ errors?)", l.strip())][:10]
+        lines_ = drop_noise(text).split("\n")
+        extra = [l for l in lines_ if (ERRORISH.search(l) or re.match(r"^\[ERROR\]\s+(symbol|location):", l)) and not any(d["m"][:40] in l for d in diags)]
+        extra = [re.sub(r"^\[ERROR\]\s*", "", l) for l in extra if not re.search(
+            r"^(error: (could not compile|aborting)|Found \d+ error|\d+ errors?|\[ERROR\] (COMPILATION ERROR|Failed to execute goal .*Compilation failure))", l.strip())]
+        seen = set()
+        extra = [l for l in extra if not (l.strip() in seen or seen.add(l.strip()))][:10]
         if extra:
             body += "\nother:\n" + "\n".join("  " + l.strip()[:220] for l in extra)
         return body
@@ -456,11 +581,18 @@ def filter_output(cmd, text, cwd=None, code=None, elapsed=None):
             out = tests(text, cwd, cmd, elapsed, code)   # always parse: keeps Δ state current
             if out is not None and len(out) < len(text):
                 return out, k
+            if out is None:                               # e.g. compile error before any test ran
+                b = build(text, cmd, code, cwd) if parse.diagnostics(text) else None
+                if b is not None and len(b) < len(text):
+                    return b, k
+        if k == "build":
+            out = build(text, cmd, code, cwd)
+            if out is not None and len(out) < len(text) * 0.9:
+                return out, k
+            out = None
         if len(text) < SMALL and k != "diff":
             return text, k
-        if k == "build":
-            out = build(text, cmd, code)
-        elif k == "install":
+        if k == "install":
             out = install(text, cmd, code)
         elif k == "gitnet":
             out = gitnet(text)

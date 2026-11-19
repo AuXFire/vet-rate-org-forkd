@@ -132,11 +132,11 @@ def c_main(args):
             w = len(diags)
             ok.append(ck["name"] + (" (%d warn)" % w if w else ""))
             if w and w <= 12:
-                parts.append(filt.render_diags(diags, ck["name"]))
+                parts.append(filt.render_diags(diags, ck["name"], info["dir"]))
             continue
         code |= rc or 1
         log = util.save_log(raw, ck["name"].replace(" ", "_"))
-        body = filt.render_diags(diags, ck["name"]) if errs else "✗ %s (exit %d)\n%s" % (ck["name"], rc, filt.generic(clean))
+        body = filt.render_diags(diags, ck["name"], info["dir"]) if errs else "✗ %s (exit %d)\n%s" % (ck["name"], rc, filt.generic(clean))
         parts.append(body + "\n[log %s]" % log)
     head = ("✓ " if not code else "✗ ") + "c: " + ", ".join([("ok: " + " ".join(ok)) if ok else ""] + ([] if not code else ["failed: " + " ".join(ck["name"] for ck, r in zip(checks, results) if r[0] != 0)])).strip(", ")
     text = head + " (%.1fs)" % (time.time() - t0) + ("\n" + "\n".join(parts) if parts else "")

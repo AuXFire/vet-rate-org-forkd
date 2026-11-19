@@ -206,10 +206,13 @@ def on_post_bash(ev):
     code = tr.get("exitCode", tr.get("returnCode", tr.get("code")))
     code = code if isinstance(code, int) else None
     shown, kind = filt.filter_output(cmd, raw, ev.get("cwd"), code=code)
-    if kind in ("raw", "read") or len(shown) >= len(raw) * 0.92:
+    if kind in ("raw", "read"):
         return
     log = util.save_log(raw, (m[0] if m else "bash"))
-    shown = shown.rstrip("\n") + "\n[lean: %s · %d→%d lines · full output: %s · RAW=1 to bypass]" % (kind, raw.count("\n") + 1, shown.count("\n") + 1, log)
+    footer = "\n[lean %d→%d lines · raw: %s]" % (raw.count("\n") + 1, shown.count("\n") + 1, log)
+    if len(shown) + len(footer) >= len(raw) * 0.85:
+        return
+    shown = shown.rstrip("\n") + footer
     util.metric("bash:" + kind, len(raw), len(shown), sid=ev.get("session_id"), cmd=cmd[:120])
     new = dict(tr)
     new["stdout"], new["stderr"] = shown, ""

@@ -49,8 +49,9 @@ class KeyFacts(unittest.TestCase):
                 raw = fx(f)
                 util.save_state(util.root(cwd or FX), {})          # no Δ from previous runs
                 out, kind = filt.filter_output(cmd, raw, cwd or FX, code=1 if "pass" not in f else 0)
+                full = out + "\n" + filt.expand_braces(out)
                 for fact in facts:
-                    self.assertIn(fact, out, "%s lost %r\n---\n%s" % (f, fact, out))
+                    self.assertTrue(fact in full or fact.split("::")[-1] in full, "%s lost %r\n---\n%s" % (f, fact, out))
                 self.assertLessEqual(len(out), len(raw) * ratio, "%s: %d -> %d chars\n%s" % (f, len(raw), len(out), out))
 
 
@@ -188,9 +189,9 @@ class Hooks(unittest.TestCase):
                            "tool_response": {"stdout": raw, "stderr": "", "interrupted": False, "isImage": False}})
         new = r["hookSpecificOutput"]["updatedToolOutput"]
         self.assertIn("300 passed", new["stdout"])
-        self.assertIn("full output:", new["stdout"])
+        self.assertIn("raw: ", new["stdout"])
         self.assertEqual(set(new), {"stdout", "stderr", "interrupted", "isImage"})
-        log = new["stdout"].split("full output: ")[1].split(" ·")[0]
+        log = new["stdout"].split("raw: ")[1].rstrip("]")
         self.assertEqual(open(os.path.expanduser(log)).read(), raw)   # lossless recovery
 
     def test_post_bash_leaves_reads_alone(self):
