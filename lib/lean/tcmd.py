@@ -69,6 +69,24 @@ def _rerun(tst, failed):
         return "go test -run '^(%s)$' ./..." % "|".join(tops) if tops else None
     if r == "cargo":
         return "cargo test -- %s" % _q(failed[:30])
+    if r == "junit":
+        by = {}
+        for n in failed:
+            m = re.match(r"^(\w+)\.(\w+)", n)
+            if m:
+                by.setdefault(m.group(1), [])
+                if m.group(2) not in by[m.group(1)]:
+                    by[m.group(1)].append(m.group(2))
+        if not by:
+            return None
+        if tst.get("tool") == "maven":
+            return "%s -Dtest=%s -Dsurefire.failIfNoSpecifiedTests=false" % (cmd, _q([",".join("%s#%s" % (c, "+".join(ms)) for c, ms in by.items())]))
+        return "%s %s" % (cmd, " ".join("--tests %s" % _q(["*%s.%s" % (c, mm)]) for c, ms in by.items() for mm in ms))
+    if r == "rspec":
+        return "%s %s" % (cmd, " ".join("-e %s" % _q([n]) for n in failed[:30]))
+    if r == "minitest":
+        names = sorted({n.split("#")[-1] for n in failed})
+        return "%s -- -n %s" % (cmd, _q(["/^(%s)$/" % "|".join(names)])) if "rake" not in cmd else "%s TESTOPTS=%s" % (cmd, _q(["-n /^(%s)$/" % "|".join(names)]))
     return None
 
 

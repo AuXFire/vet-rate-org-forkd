@@ -350,16 +350,22 @@ def quick_check(p):
             return ""
         if ext in (".js", ".mjs", ".cjs") and shutil.which("node"):
             c, out = util.sh(["node", "--check", p], timeout=5)
-            return _first_err(out) if c else ""
+            if c:
+                return _first_err(out)
+            if ext == ".js" and re.search(r"(?m)^\s*(import|export)\b", open(p, errors="replace").read()):
+                c, out = util.sh(["node", "--experimental-default-type=module", "--check", p], timeout=5)   # ESM: plain --check skips it
+                if c and "bad option" not in out:
+                    return _first_err(out)
+            return ""
         if ext in (".ts", ".mts", ".cts", ".tsx", ".jsx"):
             esb = shutil.which("esbuild")
             if esb:
                 c, out = util.sh([esb, p, "--log-level=error", "--outfile=/dev/null", "--loader:%s=%s" % (ext, ext[1:].replace("m", "").replace("c", ""))], timeout=5)
                 return _first_err(out) if c else ""
-            if ext in (".ts", ".mts", ".cts") and shutil.which("node"):
-                c, out = util.sh(["node", "--experimental-strip-types", "--no-warnings", "--check", p], timeout=5)
-                if c and "ERR_UNSUPPORTED" not in out and "bad option" not in out:
-                    return _first_err(out)
+            tsmod = _find_typescript(os.path.dirname(p))
+            if tsmod and shutil.which("node"):
+                c, out = util.sh(["node", "-e", TS_SYNTAX, tsmod, p], timeout=8)
+                return out.strip()[:1200] if c == 1 else ""
             return ""
         if ext == ".go" and shutil.which("gofmt"):
             c, out = util.sh(["gofmt", "-e", "-l", p], timeout=5)
@@ -370,6 +376,28 @@ def quick_check(p):
     except Exception:
         return ""
     return ""
+
+
+TS_SYNTAX = (
+    "const ts=require(process.argv[1]);const fs=require('fs');const f=process.argv[2];"
+    "const r=ts.transpileModule(fs.readFileSync(f,'utf8'),{fileName:f,reportDiagnostics:true,compilerOptions:{jsx:'preserve'}});"
+    "const ds=r.diagnostics||[];for(const d of ds.slice(0,6)){const q=d.file?d.file.getLineAndCharacterOfPosition(d.start):{line:0,character:0};"
+    "console.log(f.split('/').pop()+':'+(q.line+1)+':'+(q.character+1)+': TS'+d.code+' '+ts.flattenDiagnosticMessageText(d.messageText,' '))}"
+    "process.exit(ds.length?1:0)")
+
+
+def _find_typescript(d):
+    """Nearest node_modules/typescript (the project's own compiler), else a global install."""
+    while True:
+        cand = os.path.join(d, "node_modules", "typescript")
+        if os.path.isdir(cand):
+            return cand
+        if os.path.dirname(d) == d:
+            break
+        d = os.path.dirname(d)
+    c, out = util.sh(["npm", "root", "-g"], timeout=5) if shutil.which("npm") else (1, "")
+    g = os.path.join(out.strip(), "typescript") if c == 0 else ""
+    return g if g and os.path.isdir(g) else None
 
 
 def _first_err(out):

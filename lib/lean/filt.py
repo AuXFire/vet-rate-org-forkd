@@ -533,6 +533,8 @@ def test_result(text, cmd=""):
 
 def tests(text, cwd, cmd="", elapsed=None, code=None):
     r = test_result(text, cmd)
+    if not r and re.search(r"\b(mvnw?|gradlew?)\b", cmd):
+        r = parse.junit_xml_result(cwd, max_age=(elapsed or 0) + 120 if elapsed else None)   # quiet runs print nothing
     if not r:
         return None
     if r["runner"] == "junit" and not r["failures"] and r["counts"].get("failed"):
@@ -717,6 +719,12 @@ def filter_output(cmd, text, cwd=None, code=None, elapsed=None):
     cwd = cwd or os.getcwd()
     text = util.clean(text)
     k = kind_of(cmd)
+    if not text.strip() and k in ("test", "build", "install"):
+        if k == "test":
+            out = tests(text, cwd, cmd, elapsed, code)
+            if out:
+                return out, k
+        return ("✓ no output (exit 0)" if code == 0 else "✗ no output (exit %s)" % code) if code is not None else text, k
     if k in ("raw", "read"):
         return text, k
     out = None
