@@ -11,6 +11,12 @@ t all        full suite          t <args|paths>   runner with args
 t -h         this help           RAW=1 t ...      unfiltered output"""
 
 
+def _short(cmd, d):
+    """Display form: node_modules/.bin/vitest -> vitest, project-relative paths."""
+    cmd = re.sub(r"\S*/node_modules/\.bin/(\S+)", r"\1", cmd)
+    return cmd.replace(d + os.sep, "")
+
+
 def _q(xs):
     return " ".join(shlex.quote(x) for x in xs)
 
@@ -78,28 +84,33 @@ def t_main(args):
     code = 0
     for tst in info["tests"]:
         if args and args[0] != "all":
-            code |= run.run("%s %s" % (tst["cmd"], _q(args)), cwd=d, kind_hint="test")
+            cmd = "%s %s" % (tst["cmd"], _q(args))
+            code |= run.run(cmd, cwd=d, label="t: " + _short(cmd, d), kind_hint="test")
             continue
         if args and args[0] == "all":
-            code |= run.run(tst["cmd"], cwd=d, label="t all: " + tst["cmd"], kind_hint="test")
+            code |= run.run(tst["cmd"], cwd=d, label="t all: " + _short(tst["cmd"], d), kind_hint="test")
             continue
         st = util.load_state(util.root(d))
         prev = st.get("tests", {}).get(tst["runner"]) or {}
         failed = list(prev)
         rr = _rerun(tst, failed) if failed else None
         if rr:
-            c = run.run(rr, cwd=d, label="t: rerun %d failure(s) → %s" % (len(failed), rr), kind_hint="test")
+            c, text = run.run_capture(rr, d)
             if c != 0:
+                print("t: rerun %d failure(s) → %s\n%s" % (len(failed), _short(rr, d), text))
                 code |= c
                 continue
-            print("all previous failures pass → full suite")
-            code |= run.run(tst["cmd"], cwd=d, label="t: " + tst["cmd"], kind_hint="test")
+            delta = re.search(r"\[Δ [^\]]+\]", text)
+            c2, full = run.run_capture(tst["cmd"], d)
+            sep = " · " if "\n" not in full else "\n"
+            print("t: %d rerun ✓%s → %s:%s%s" % (len(failed), " " + delta.group(0) if delta else "", _short(tst["cmd"], d), sep, full))
+            code |= c2
             continue
         rel = _related(tst, d, detect.changed_files(d))
         if rel:
-            code |= run.run(rel, cwd=d, label="t: related → " + rel, kind_hint="test")
+            code |= run.run(rel, cwd=d, label="t: related → " + _short(rel, d), kind_hint="test")
         else:
-            code |= run.run(tst["cmd"], cwd=d, label="t: " + tst["cmd"], kind_hint="test")
+            code |= run.run(tst["cmd"], cwd=d, label="t: " + _short(tst["cmd"], d), kind_hint="test")
     return code
 
 

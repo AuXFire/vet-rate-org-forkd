@@ -305,8 +305,11 @@ def render_tests(res, cwd, prev=None, elapsed=None):
     """prev: {name: normalized msg} from the last run of this runner in this repo (or None)."""
     fails = res["failures"]
     now = {f["name"]: _norm(f["msg"]) for f in fails}
-    head = "%s %s: %s" % ("✗" if fails or res["counts"].get("failed") or res.get("build_failed") else "✓",
-                          res["runner"], _count_str(res["counts"]) or ("%d failed" % len(fails) if fails else "no tests ran?"))
+    counts = dict(res["counts"])
+    if counts.get("files_failed") and not any(f["name"].endswith("(suite)") for f in fails):
+        counts.pop("files_failed")      # files that merely contain failing tests: no new information
+    head = "%s %s: %s" % ("✗" if fails or counts.get("failed") or res.get("build_failed") else "✓",
+                          res["runner"], _count_str(counts) or ("%d failed" % len(fails) if fails else "no tests ran?"))
     if elapsed:
         head += " (%.1fs)" % elapsed
     unchanged = set()
@@ -330,13 +333,13 @@ def render_tests(res, cwd, prev=None, elapsed=None):
     groups = {}
     for f in fails:
         groups.setdefault(_norm(f["msg"]) or f["name"], []).append(f)
-    shown = 0
+    shown, same = 0, []
     for fs in groups.values():
         f = fs[0]
         names = [x["name"] for x in fs]
         msg = (merge_texts([x["msg"] for x in fs]) or f["msg"]) if len(fs) > 1 else f["msg"]
         if all(n in unchanged for n in names):
-            out.append("= %s — unchanged: %s" % (compact_names(names, 8), msg[:160]))
+            same += names       # message already in context from the previous run
             continue
         if shown >= 15:
             out.append("✗ %s — %s" % (compact_names(names, 4), msg[:120]))
@@ -352,11 +355,16 @@ def render_tests(res, cwd, prev=None, elapsed=None):
         detail = f["detail"]
         if len(fs) > 1 and all(len(x["detail"]) == len(detail) for x in fs):
             detail = [merge_texts([x["detail"][i] for x in fs]) or detail[i] for i in range(len(detail))]
+        diff = [d for d in detail if d[:1] in "+-" and not d.startswith(("- Expected", "+ Received"))]
+        if diff and all(d[1:].strip().rstrip(",") in msg for d in diff):
+            detail = [d for d in detail if d not in diff and not d.startswith(("- Expected", "+ Received"))]   # values already in msg
         for d in _pick_detail(detail):
             out.append("   " + d[:200])
         if f["loc"]:
             out.append("   @ %s:%d" % (_rel(f["loc"][0], cwd), f["loc"][1]))
             out += _snippet(f["loc"], cwd)
+    if same:
+        out.append("= unchanged: " + compact_names(same, 30))
     w = res.get("warnings") or []
     if w:
         by = {}

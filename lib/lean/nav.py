@@ -20,16 +20,17 @@ CODE_EXT = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".rs", "
 SKIP_DIRS = {"node_modules", ".git", "dist", "build", "target", ".venv", "venv", "__pycache__", ".next", "vendor", ".tox", "coverage", ".mypy_cache", ".pytest_cache"}
 
 JS = [
-    (re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:async\s+)?function\s*\*?\s*(\w+)"), "fn"),
-    (re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:abstract\s+)?class\s+(\w+)"), "class"),
-    (re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?interface\s+(\w+)"), "interface"),
-    (re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?type\s+(\w+)\b[^=]*="), "type"),
-    (re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?(?:const\s+)?enum\s+(\w+)"), "enum"),
-    (re.compile(r"^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*(?::[^=]+)?=\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*(?::[^=]+)?=>|\w+\s*=>|React\.\w+|styled|create\w*\()"), "fn"),
+    (re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:async\s+)?function\s*\*?\s*([\w$]+)"), "fn"),
+    (re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:abstract\s+)?class\s+([\w$]+)"), "class"),
+    (re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?interface\s+([\w$]+)"), "interface"),
+    (re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?type\s+([\w$]+)\b[^=]*="), "type"),
+    (re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?(?:const\s+)?enum\s+([\w$]+)"), "enum"),
+    (re.compile(r"^\s*(?:export\s+)?(?:const|let|var)\s+([\w$]+)\s*(?::[^=]+)?=\s*(?:async\s+)?(?:function\b|\((?:[^)]*$|[^)]*\)\s*(?::[^=]+)?=>)|[\w$]+\s*=>|React\.\w+|styled|create\w*\()"), "fn"),
     (re.compile(r"^\s+(?:public\s+|private\s+|protected\s+|static\s+|readonly\s+|override\s+|async\s+|get\s+|set\s+)*(#?\w+)\s*(?:<[^>]*>)?\([^)]*\)?\s*(?::\s*[^{;]+)?\{\s*$"), "method"),
 ]
-GO = [(re.compile(r"^func\s+(?:\(([^)]*)\)\s*)?(\w+)"), "func"), (re.compile(r"^type\s+(\w+)\s+(\w+)"), "type")]
-RS = [(re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:unsafe\s+)?(?:const\s+)?(?:extern\s+\S+\s+)?(fn|struct|enum|trait|impl|mod|type|macro_rules!)\s*(?:<[^{]*?>\s*)?([\w:]+(?:\s+for\s+[\w:<>]+)?)?"), "rs")]
+GO = [(re.compile(r"^func\s+(?:\(([^)]*)\)\s*)?(\w+)"), "func"), (re.compile(r"^type\s+(\w+)\b(?!\s*\()"), "type"),
+      (re.compile(r"^\t(\w+)\s+(?:struct|interface|func|map|chan|\[|\*|\w)"), "gotypegroup")]
+RS = [(re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:unsafe\s+)?(?:const\s+)?(?:extern\s+\S+\s+)?(fn|struct|enum|trait|impl|mod|type|macro_rules!)\s*(?:<[^{]*?>\s*)?(\w+(?:::\w+)*)?"), "rs")]
 GEN = [(re.compile(r"^\s*(?:public|private|protected|internal|static|final|abstract|override|async|open|data|sealed|\s)*\s*(class|interface|enum|struct|record|object|def|module|fun|func|function)\s+(\w+)"), "gen")]
 KEYWORDS = {"if", "for", "while", "switch", "catch", "return", "function", "else", "do", "try", "with", "constructor"}
 
@@ -39,27 +40,73 @@ def _lines(p):
         return f.read().split("\n")
 
 
-def _strip(l):
-    l = re.sub(r"(\"(\\.|[^\"\\])*\"|'(\\.|[^'\\])*'|`[^`]*`)", '""', l)
+STR_GENERIC = re.compile(r"(\"(\\.|[^\"\\])*\"|'(\\.|[^'\\])*'|`[^`]*`)")
+STR_RUST = re.compile(r"(\"(\\.|[^\"\\])*\"|'(?:\\.|\\u\{[0-9a-fA-F]+\}|[^'\\])')")   # 'a' chars; lifetimes like 'a stay
+
+
+def _strip(l, rust=False):
+    l = (STR_RUST if rust else STR_GENERIC).sub('""', l)
     return re.sub(r"//.*$", "", l)
 
 
-def _brace_end(lines, i):
-    depth, opened = 0, False
-    for j in range(i, min(len(lines), i + 4000)):
-        s = _strip(lines[j])
-        if not opened and j > i + 2 and "{" not in s:
-            return i + 1
-        for ch in s:
-            if ch == "{":
+CONT_END = ("=", "|", "&", ",", "(", "[", "=>", "+", "-", "?", ":", "->", "<", "\\", "&&", "||")
+CONT_START = ("|", "&", ".", "?", ":", "=>", "+", "-", "->", "where ", "extends ", "implements ")
+CONT_LINE = ("where", "extends", "implements")
+
+
+REGEX_LIT = re.compile(r"(?<=[=(,:\[!&|?{};])\s*/(?![/*])(?:\\.|\[(?:\\.|[^\]])*\]|[^/\n\\])+/[gimsuyd]*")
+
+
+NEEDS_BODY = {"fn", "func", "function", "struct", "enum", "trait", "impl", "class", "interface", "mod", "union"}
+LEAD_KW = re.compile(r"^\s*(?:(?:export|default|declare|abstract|async|pub(?:\([^)]*\))?|unsafe|extern\s+\S+|public|private|protected|static|final|sealed|open|data|inline)\s+)*(\w+)")
+NEW_DECL = re.compile(r"^(?:(?:func|type|var|let|const|fn|pub|struct|enum|trait|impl|class|interface|export|declare|namespace|module|def|mod|use)\b|#\[|@|//|/\*)")
+
+
+def _brace_end(lines, i, rust=False):
+    """End line of the declaration starting at i: bracket depth over (), [], {} plus continuation markers."""
+    depth, opened, n, inblk = 0, False, len(lines), False
+    first = re.sub(r"//.*$", "", STR_GENERIC.sub('""', lines[i])).rstrip()
+    lk = LEAD_KW.match(first)
+    need_body = bool(lk and lk.group(1) in NEEDS_BODY) and not first.endswith(";") and "=" not in first.split("(")[0]
+    curly = False
+    for j in range(i, min(n, i + 4000)):
+        raw = (STR_RUST if rust else STR_GENERIC).sub('""', lines[j])     # strings first: "/*" in a string is not a comment
+        if "/" in raw and not rust:
+            raw = REGEX_LIT.sub(" 0", raw)
+        if inblk:
+            if "*/" not in raw:
+                continue
+            raw, inblk = raw.split("*/", 1)[1], False
+        raw = re.sub(r"/\*.*?\*/", "", raw)
+        if "/*" in raw:
+            raw, inblk = raw.split("/*", 1)[0], True
+        st = re.sub(r"//.*$", "", raw).rstrip()
+        for ch in st:
+            if ch in "({[":
                 depth += 1
                 opened = True
-            elif ch == "}":
+                curly = curly or ch == "{"
+            elif ch in ")}]":
                 depth -= 1
-                if opened and depth <= 0:
-                    return j + 1
-        if not opened and s.rstrip().endswith(";"):
-            return j + 1
+        if depth > 0:
+            continue
+        if need_body and not curly and not st.endswith(";") and j - i < 20:
+            k = j + 1
+            while k < n and not lines[k].strip():
+                k += 1
+            if k < n and not NEW_DECL.match(lines[k]):
+                continue        # signature still running (where-clauses, wrapped params): body not opened yet
+        if st.endswith(CONT_END) and not st.endswith(("++", "--")):
+            continue
+        k = j + 1
+        while k < n and not lines[k].strip():
+            k += 1
+        nxt = lines[k].strip() if k < n else ""
+        if (nxt.startswith(CONT_START) or nxt in CONT_LINE) and not nxt.startswith(("//", "/*", "*", "->")) or (nxt.startswith("->") and not opened):
+            continue
+        if not opened and j - i > 40:
+            return i + 1
+        return j + 1
     return i + 1
 
 
@@ -107,7 +154,14 @@ def outline(p):
         return syms
     pats = JS if ext in (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte") else GO if ext == ".go" else RS if ext == ".rs" else GEN
     stack = []   # (end, depth)
+    in_type_group = False
     for i, l in enumerate(lines):
+        if pats is GO:
+            if re.match(r"^type\s*\($", l):
+                in_type_group = True
+                continue
+            if in_type_group and l.startswith(")"):
+                in_type_group = False
         if not l.strip() or l.lstrip().startswith(("//", "*", "/*", "#")) and ext not in (".rb",):
             continue
         for rx, kind in pats:
@@ -119,11 +173,19 @@ def outline(p):
                 name = m.group(2)
             elif kind == "type" and pats is GO:
                 name = m.group(1)
-            if not name or name in KEYWORDS:
+            if kind == "gotypegroup" and in_type_group:
+                end = _brace_end(lines, i)
+                syms.append((i + 1, end, 0, _sig(l), m.group(1)))
+                continue
+            if kind == "gotypegroup":
+                if not in_type_group:
+                    continue
+                name = m.group(1)
+            if not name or (kind == "method" and name in KEYWORDS):
                 continue
             if kind == "method" and not stack:
                 continue        # indented call-looking line outside any class/fn
-            end = _brace_end(lines, i)
+            end = _brace_end(lines, i, ext == ".rs")
             while stack and stack[-1] < i + 1:
                 stack.pop()
             depth = len(stack)

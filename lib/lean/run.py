@@ -60,3 +60,11 @@ def run(cmd, cwd=None, label=None, kind_hint=None, timeout=None, show_cmd=True, 
     print(text)
     util.metric("cmd:" + kind, raw_len, len(text), cmd=(label or cmd)[:120], code=code, dt=round(dt, 2))
     return code
+
+
+def run_capture(cmd, cwd, label=None, kind_hint="test"):
+    """Like run() but returns (code, text) instead of printing (metric still recorded)."""
+    code, raw, dt = execute(cmd, cwd)
+    text, raw_len, kind = render(cmd, raw, code, dt, cwd, label, show_cmd=False, kind_hint=kind_hint)
+    util.metric("cmd:" + kind, raw_len, len(text), cmd=(label or cmd)[:120], code=code, dt=round(dt, 2))
+    return code, text
