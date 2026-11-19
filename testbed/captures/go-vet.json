@@ -1,0 +1,1 @@
+{"cmd": "go vet ./...", "code": 1, "raw": "# example.com/calc/util\n# [example.com/calc/util]\nutil/util.go:5:26: fmt.Printf format %s reads arg #2, but call has 1 arg\n", "dt": 0.09}

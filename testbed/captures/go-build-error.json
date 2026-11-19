@@ -1,0 +1,1 @@
+{"cmd": "go test ./...", "code": 1, "raw": "# example.com/calc [example.com/calc.test]\n./calc.go:3:41: undefined: undefinedThing\nFAIL\texample.com/calc [build failed]\nok  \texample.com/calc/util\t0.002s\nFAIL\n", "dt": 0.22}
