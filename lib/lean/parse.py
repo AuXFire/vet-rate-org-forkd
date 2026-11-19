@@ -300,6 +300,9 @@ def cargo_test(text):
                 cur["detail"].append(s)
     for f in res["failures"]:
         f["detail"] = f["detail"][:10]
+    stop = re.search(r"^error: test failed, to rerun pass `([^`]+)`", text, re.M)
+    if stop:
+        res["note"] = "cargo stopped after this target (%s): later test targets did not run (use --no-fail-fast)" % stop.group(1)
     return res
 
 
@@ -356,6 +359,49 @@ def junit(text):
             if len(fr) > 1:
                 f["detail"].append("via " + ", ".join("%s:%d" % x for x in fr[1:3]))
     return res
+
+
+def junit_xml(cwd, max_age=None):
+    """Failures from JUnit XML reports (gradle build/test-results, maven surefire-reports) written in the last few minutes."""
+    import glob
+    import os
+    import time
+    import xml.etree.ElementTree as ET
+    max_age = max_age or int(os.environ.get("LEAN_REPORT_MAX_AGE", 900))
+    pats = ["build/test-results/**/*.xml", "target/surefire-reports/*.xml", "**/build/test-results/**/*.xml", "**/target/surefire-reports/*.xml"]
+    files = []
+    for p in pats:
+        files += [f for f in glob.glob(os.path.join(cwd, p), recursive=True) if time.time() - os.path.getmtime(f) < max_age]
+    out = []
+    for f in sorted(set(files))[:200]:
+        try:
+            root = ET.parse(f).getroot()
+        except Exception:
+            continue
+        for tc in root.iter("testcase"):
+            bad = tc.find("failure")
+            if bad is None:
+                bad = tc.find("error")
+            if bad is None:
+                continue
+            frames, method = [], None
+            cls = tc.get("classname", "")
+            for m in re.finditer(r"at (?:[\w.-]*//)?([\w$./]+)\.([\w$<>]+)\(([\w$]+\.(?:java|kt|scala|groovy)):(\d+)\)", bad.text or ""):
+                if not JAVA_LIB.match(m.group(1)):
+                    frames.append((m.group(3), int(m.group(4))))
+                    if m.group(1) == cls and not method:
+                        method = m.group(2)
+            frames = _uniq(frames)
+            msg = (bad.get("message") or (bad.text or "").strip().split("\n")[0])
+            typ = (bad.get("type") or "").split(".")[-1]
+            msg = re.sub(r"^(org\.opentest4j|java\.lang|org\.junit\.\w+|junit\.framework)\.", "", msg if typ and typ in msg else "%s: %s" % (typ, msg) if typ else msg)
+            name = tc.get("name", "")
+            if method and not name.startswith(method):
+                name = "%s%s" % (method, name if name.startswith("[") else "(%s)" % name)   # parametrized display names
+            fl = _fail("%s.%s" % (cls.split(".")[-1], name), msg[:300],
+                       frames[0] if frames else None, ["via " + ", ".join("%s:%d" % x for x in frames[1:3])] if len(frames) > 1 else [])
+            out.append(fl)
+    return out
 
 
 # ---------------------------------------------------------------- rspec
@@ -462,6 +508,8 @@ TEST_PARSERS = {"pytest": pytest, "jest": jest, "vitest": vitest, "go": gotest, 
 
 # ---------------------------------------------------------------- diagnostics
 DIAG = [
+    # pyright: /p/a.py:3:12 - error: msg (reportX)
+    re.compile(r"^\s*(?P<f>\S+\.pyi?):(?P<l>\d+):(?P<c>\d+) - (?P<s>error|warning): (?P<m>.+?)(?: \((?P<code>report\w+)\))?$"),
     # javac via maven: [ERROR] /p/Calc.java:[3,58] cannot find symbol
     re.compile(r"^\[(?P<s>ERROR|WARNING)\] (?P<f>\S+\.(?:java|kt|scala)):\[(?P<l>\d+),(?P<c>\d+)\] (?P<m>.+)$"),
     # javac / kotlinc: Calc.java:3: error: cannot find symbol
@@ -524,6 +572,10 @@ def diagnostics(text):
                 if sev == "note":
                     break
                 msg, code = g["m"].strip(), g.get("code") or g.get("rc") or ""
+                if not code and i + 1 < len(lines):
+                    cm = re.match(r"^\s{2,}.*\((report\w+)\)\s*$", lines[i + 1])
+                    if cm:
+                        code = cm.group(1)
                 wm = re.search(r"\s+\[(-W[\w=-]+)\]$", msg)        # gcc/clang: "... [-Wunused-variable]"
                 if wm and not code:
                     msg, code = msg[:wm.start()], wm.group(1)

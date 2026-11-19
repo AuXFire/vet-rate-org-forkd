@@ -264,6 +264,30 @@ def on_post_failure(ev):
               "lean: that failure printed ~%d tokens; `%s` would have shown ~%d with the same facts." % (util.tokens(len(err)), tool, util.tokens(len(shown)))}})
 
 
+def on_post_search(ev):
+    """Built-in Glob / Grep: lossless, order-preserving compaction (common prefix once, grouped by file)."""
+    tr, tool = ev.get("tool_response"), ev.get("tool_name")
+    if not isinstance(tr, dict):
+        return
+    new = dict(tr)
+    if isinstance(tr.get("content"), str) and tr.get("content"):
+        raw = tr["content"]
+        out = filt.compact_grep(raw)
+        if not out or len(out) > len(raw) * 0.85:
+            return
+        new["content"] = out
+    elif isinstance(tr.get("filenames"), list) and all(isinstance(x, str) for x in tr["filenames"]):
+        raw = "\n".join(tr["filenames"])
+        out = filt.compact_paths(tr["filenames"])
+        if not out or len(out) > len(raw) * 0.85:
+            return
+        new["filenames"] = [out]
+    else:
+        return
+    util.metric(tool.lower(), len(raw), len(out), sid=ev.get("session_id"), cmd=json.dumps(ev.get("tool_input") or {})[:120])
+    emit({"hookSpecificOutput": {"hookEventName": "PostToolUse", "updatedToolOutput": new}})
+
+
 def on_post_mcp(ev):
     """Any MCP server (current or added later): compact JSON text results; raw kept in a log."""
     from . import jsonc
@@ -389,6 +413,8 @@ def main():
                 on_post_bash(ev)
             elif tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
                 on_post_edit(ev)
+            elif tool in ("Glob", "Grep"):
+                on_post_search(ev)
             elif tool.startswith("mcp__"):
                 on_post_mcp(ev)
         elif name == "PreToolUse" and tool == "Read":

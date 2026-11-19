@@ -20,11 +20,13 @@ IMPORTANT = re.compile(r"(?i)(\berr(or)?s?\b|\bERR!|\bfail(ed|ure|s)?\b|\bfatal\
 ERRORISH = re.compile(r"(?i)(\berror\b|\bfailed\b|\bfatal\b|\bpanic\b|exception|\bERR!)")
 
 # commands whose output IS the content the agent asked for: never touch beyond ANSI cleanup
-READ_CMDS = re.compile(r"^(cat|head|tail|sed|nl|bat|less|more|awk|jq|yq|wc|ls|tree|find|fd|file|stat|echo|printf|env|which|type|pwd|diff|cmp|xxd|od|base64|python3? -c|node -e|o|g|t|c|sub|x|lean)\b")
+READ_CMDS = re.compile(r"^(cat|head|tail|sed|nl|bat|less|more|awk|jq|yq|wc|ls|tree|file|stat|echo|printf|env|which|type|pwd|diff|cmp|xxd|od|base64|python3? -c|node -e|o|g|t|c|sub|x|lean)\b")
+PATHS_CMD = re.compile(r"^(find|fd|fdfind|git ls-files|rg -l|rg --files|rg --files-with-matches|grep -\w*l\w*|ls -1)\b")
+SEARCH_CMD = re.compile(r"^(rg|grep|git grep|ag|ack)\b")
 GIT_DIFF = re.compile(r"^git (diff|show|log -p|stash show)")
 TEST = re.compile(r"(\bpytest\b|py\.test|-m pytest|\bjest\b|\bvitest\b|\bgo test\b|\bcargo (test|nextest)\b|\b(npm|pnpm|yarn|bun)( run)? test\b|\bmake test\b|\btox\b|\bnox\b|"
                   r"\bmvnw?\b.*\b(test|verify)\b|\bgradlew?\b.*\b(test|check)\b|\brspec\b|\brake test\b|\bruby -I\w* \S*test|\bphpunit\b|\bctest\b|\bdotnet test\b|\bmix test\b)")
-BUILD = re.compile(r"(\btsc\b|\beslint\b|\bruff\b|\bmypy\b|\bpyright\b|\bflake8\b|\bpylint\b|\bgo (build|vet)\b|\bgolangci-lint\b|\bcargo (build|check|clippy)\b|\bmake\b|\bgcc\b|\bg\+\+\b|\bclang\b|\b(npm|pnpm|yarn|bun)( run)? (build|lint|typecheck|check|type-check)\b|\bnext build\b|\bvite build\b|\bwebpack\b|\bbiome\b|\bprettier --check\b|\bgradle\b|\bmvn\b)")
+BUILD = re.compile(r"(\btsc\b|\beslint\b|\bruff\b|\bmypy\b|\bpyright\b|\bbasedpyright\b|\bflake8\b|\bpylint\b|\bgo (build|vet)\b|\bgolangci-lint\b|\bcargo (build|check|clippy)\b|\bmake\b|\bgcc\b|\bg\+\+\b|\bclang\b|\b(npm|pnpm|yarn|bun)( run)? (build|lint|typecheck|check|type-check)\b|\bnext build\b|\bvite build\b|\bwebpack\b|\bbiome\b|\bprettier --check\b|\bgradle\b|\bmvn\b)")
 INSTALL = re.compile(r"(\b(npm|pnpm|bun) (i|install|ci|add)\b|\byarn( install| add|$)|\bpip3? install\b|\buv (pip install|sync|add|lock)\b|\bpoetry (install|add|lock)\b|\bcargo (fetch|install|update)\b|\bgo (mod (download|tidy)|get|install)\b|\bapt(-get)? (install|update|upgrade)\b|\bbrew (install|upgrade)\b|\bbundle install\b|\bgem install\b|\bcomposer install\b)")
 GIT_NET = re.compile(r"^git (push|pull|fetch|clone|checkout|switch|merge|rebase|submodule|lfs)\b")
 DOCKER = re.compile(r"^docker( compose| buildx)? (build|pull|push|compose|up)\b")
@@ -69,6 +71,10 @@ def kind_of(cmd):
         return "generic"
     if GIT_DIFF.match(m):
         return "diff"
+    if PATHS_CMD.match(m):
+        return "paths"
+    if SEARCH_CMD.match(m):
+        return "search"
     for k, rx in (("test", TEST), ("build", BUILD), ("install", INSTALL)):
         if rx.search(m):
             return k
@@ -103,9 +109,15 @@ def squeeze(lines):
         while j < n and _norm(lines[j]) == k and lines[j].strip():
             j += 1
         if j - i >= 4:
-            out += [l, "  … %d similar lines …" % (j - i - 2), lines[j - 1]]
-            i = j
-            continue
+            m = merge_texts(lines[i:j])
+            if m and m.count("{") == 1 and "…" not in m and expand_braces(m).split("\n") == lines[i:j]:
+                out.append(m)           # exact: one varying counter, e.g. "chunk {1..900} of 900"
+                i = j
+                continue
+            if m and j - i >= 20 and not IMPORTANT.search(l):
+                out.append("×%d %s" % (j - i, m))   # long log run: every value per field kept, pairing in the raw log
+                i = j
+                continue
         out.append(l)
         i += 1
     res = []
@@ -149,6 +161,122 @@ def maybe_json(text):
         return json.dumps(json.loads(s), separators=(",", ":"), ensure_ascii=False)
     except Exception:
         return None
+
+
+PATH_LIKE = re.compile(r"^[^\s:]*[/.][^\s:]*$|^[\w.-]+$")
+
+
+def _tree(rel, depth):
+    """rel: list of path-part lists (consecutive order kept). Emits indented lines."""
+    out, i = [], 0
+    while i < len(rel):
+        parts = rel[i]
+        if len(parts) == 1:                       # files directly here: merge consecutive into {a,b}
+            j = i
+            while j < len(rel) and len(rel[j]) == 1:
+                j += 1
+            names = [r[0] for r in rel[i:j]]
+            out.append(" " * depth + (names[0] if len(names) == 1 else "{%s}" % ",".join(names)))
+            i = j
+            continue
+        j = i
+        while j < len(rel) and len(rel[j]) > 1 and rel[j][0] == parts[0]:
+            j += 1
+        if j - i == 1:
+            out.append(" " * depth + "/".join(parts))
+        else:
+            sub = [r[1:] for r in rel[i:j]]
+            inner = _tree(sub, depth + 1)
+            if len(inner) == 1:                     # single child line: keep on one line
+                out.append(" " * depth + parts[0] + "/" + inner[0].strip())
+            else:
+                out.append(" " * depth + parts[0] + "/")
+                out += inner
+        i = j
+    return out
+
+
+def compact_paths(paths, min_n=8):
+    """Order-preserving, lossless: common prefix once, then an indented tree; sibling runs as {a,b}."""
+    paths = [p for p in paths if p]
+    if len(paths) < 3 or any(c in p for p in paths for c in "{},\n") or any(p.startswith(" ") or p.endswith("/") for p in paths):
+        return None
+    try:
+        pre = os.path.commonpath(paths) if len({os.path.isabs(p) for p in paths}) == 1 else ""
+    except ValueError:
+        pre = ""
+    if pre in paths:
+        pre = os.path.dirname(pre)
+    if len(paths) < min_n and len(pre) < 20:
+        return None                     # few paths, short prefix: not worth a header
+    rel = [(os.path.relpath(p, pre) if pre else p).split("/") for p in paths]
+    head = "%s/ (%d):" % (pre.rstrip("/"), len(paths)) if pre and pre != "." else "(%d paths):" % len(paths)
+    return head + "\n" + "\n".join(_tree(rel, 0))
+
+
+def expand_paths(text):
+    """Inverse of compact_paths (tests/testbed prove losslessness with it)."""
+    lines = text.split("\n")
+    m = re.match(r"^(.*)/ \(\d+\):$", lines[0])
+    pre = m.group(1) if m else ""
+    out, stack = [], []
+    for l in lines[1:]:
+        if not l.strip():
+            continue
+        d = len(l) - len(l.lstrip(" "))
+        body = l.strip()
+        stack = stack[:d]
+        if body.endswith("/") and "{" not in body:
+            stack.append(body[:-1])
+            continue
+        b = re.match(r"^(.*?)\{(.*)\}$", body)
+        items = [b.group(1) + x for x in b.group(2).split(",")] if b else [body]
+        for it in items:
+            p = "/".join(stack + [it])
+            out.append(os.path.join(pre, p) if pre else p)
+    return out
+
+
+GREP_LINE = re.compile(r"^(.+?)([:-])(\d+)([:-])(.*)$")
+
+
+def compact_grep(text, min_lines=8):
+    """Lossless: `path:line:text` rows -> path once, then `  line: text` (order preserved; long lines capped)."""
+    lines = text.rstrip("\n").split("\n")
+    if len(lines) < min_lines:
+        return None
+    rows = []
+    for l in lines:
+        m = GREP_LINE.match(l)
+        if not m or "/" not in m.group(1) and "." not in m.group(1):
+            if l == "--" or not l.strip():
+                rows.append((None, None, l))
+                continue
+            return None
+        rows.append((m.group(1), m.group(3), m.group(5)))
+    files = [r[0] for r in rows if r[0]]
+    try:
+        pre = os.path.commonpath(files) if len({os.path.isabs(f) for f in files}) == 1 else ""
+    except ValueError:
+        pre = ""
+    if pre in files:
+        pre = os.path.dirname(pre)
+    out, cur = [], None
+    if pre and pre != ".":
+        out.append("%s/" % pre.rstrip("/"))
+    inline = len(files) < 1.5 * len(set(files))     # ~1 match per file: grouping would add lines
+    for f, n, t in rows:
+        if f is None:
+            continue
+        rf = os.path.relpath(f, pre) if pre and pre != "." else f
+        if inline:
+            out.append("%s:%s: %s" % (rf, n, t if len(t) <= LONG_LINE else t[:300] + " …[+%d chars]" % (len(t) - 300)))
+            continue
+        if rf != cur:
+            out.append(rf)
+            cur = rf
+        out.append("  %s: %s" % (n, t if len(t) <= LONG_LINE else t[:300] + " …[+%d chars]" % (len(t) - 300)))
+    return "\n".join(out)
 
 
 def drop_noise(text):
@@ -330,9 +458,11 @@ def render_tests(res, cwd, prev=None, elapsed=None):
     out = [head]
     if res.get("build_failed"):
         out.append("build failed: " + ", ".join(res["build_failed"]))
+    if res.get("note"):
+        out.append("note: " + res["note"])
     groups = {}
-    for f in fails:
-        groups.setdefault(_norm(f["msg"]) or f["name"], []).append(f)
+    for f in fails:     # same cause = same message shape at the same place
+        groups.setdefault((_norm(f["msg"]) or f["name"], tuple(f["loc"] or ())), []).append(f)
     shown, same = 0, []
     for fs in groups.values():
         f = fs[0]
@@ -405,6 +535,8 @@ def tests(text, cwd, cmd="", elapsed=None, code=None):
     r = test_result(text, cmd)
     if not r:
         return None
+    if r["runner"] == "junit" and not r["failures"] and r["counts"].get("failed"):
+        r["failures"] = parse.junit_xml(cwd)        # e.g. gradle -q prints no details: read the XML reports
     if code not in (None, 0) and not r["failures"] and not r["counts"].get("failed"):
         return None   # nonzero exit we couldn't explain: let generic show everything important
     root = util.root(cwd)
@@ -499,7 +631,11 @@ def build(text, cmd, code=None, cwd=None):
     if not errs and clean_run:
         if diags:
             return render_diags(diags, tool, cwd).replace("⚠", "✓", 1)
-        return "✓ %s ok" % (main_segment(cmd)[:60] or tool)
+        warn = [l.strip() for l in drop_noise(text).split("\n") if re.search(r"(?i)\bwarn(ing)?\b|deprecat|\(!\)", l)]
+        seen = set()
+        warn = [w for w in warn if not (_norm(w) in seen or seen.add(_norm(w)))]
+        line = "✓ %s ok" % (main_segment(cmd)[:60] or tool)
+        return line + ("\n" + "\n".join("  " + w[:240] for w in warn[:10]) + ("\n  … +%d more (log)" % (len(warn) - 10) if len(warn) > 10 else "") if warn else "")
     if errs:
         body = render_diags(diags, tool, cwd)
         # errors the diagnostic parser could not structure (linker, config) -> keep them
@@ -598,6 +734,14 @@ def filter_output(cmd, text, cwd=None, code=None, elapsed=None):
             if out is not None and len(out) < len(text) * 0.9:
                 return out, k
             out = None
+        if k == "paths":
+            out = compact_paths(text.rstrip("\n").split("\n"))
+            return (out, k) if out and len(out) < len(text) * 0.9 else (text, k)
+        if k == "search":
+            out = compact_grep(text)
+            if out and len(out) < len(text) * 0.9:
+                return out, k
+            return (text if len(text) < 40000 else "\n".join(budget(text.split("\n"), 600, 250, 250))), k   # results are data: no squeeze
         if len(text) < SMALL and k != "diff":
             return text, k
         if k == "install":
