@@ -4,7 +4,7 @@ import os
 import shutil
 from . import util
 
-MANIFESTS = ("package.json", "pyproject.toml", "setup.py", "setup.cfg", "pytest.ini", "tox.ini", "go.mod", "Cargo.toml", "requirements.txt", "conftest.py")
+MANIFESTS = ("pom.xml", "build.gradle", "build.gradle.kts", "Gemfile", "Rakefile", "package.json", "pyproject.toml", "setup.py", "setup.cfg", "pytest.ini", "tox.ini", "go.mod", "Cargo.toml", "requirements.txt", "conftest.py")
 
 
 def _has(d, *names):
@@ -112,6 +112,27 @@ def detect(cwd=None):
             info["checks"].append({"name": "mypy", "cmd": pre + "mypy ."})
         if (_has(d, "pyrightconfig.json") or "[tool.pyright]" in cfg) and (shutil.which("pyright") or pre):
             info["checks"].append({"name": "pyright", "cmd": pre + "pyright"})
+    if _has(d, "pom.xml"):
+        info["stacks"].append("java")
+        mvn = "./mvnw" if _has(d, "mvnw") else "mvn"
+        info["tests"].append({"runner": "junit", "tool": "maven", "cmd": mvn + " -B -q test"})
+        info["checks"].append({"name": "javac", "cmd": mvn + " -B -q test-compile"})
+    elif _has(d, "build.gradle", "build.gradle.kts"):
+        info["stacks"].append("jvm")
+        gr = "./gradlew" if _has(d, "gradlew") else "gradle"
+        info["tests"].append({"runner": "junit", "tool": "gradle", "cmd": gr + " test -q --console=plain"})
+        info["checks"].append({"name": "compile", "cmd": gr + " testClasses -q --console=plain"})
+    if _has(d, "Gemfile", "Rakefile", ".rspec") or os.path.isdir(os.path.join(d, "spec")) or os.path.isdir(os.path.join(d, "test")) and any(f.endswith("_test.rb") for f in os.listdir(os.path.join(d, "test"))):
+        be = "bundle exec " if _has(d, "Gemfile.lock") and shutil.which("bundle") else ""
+        if os.path.isdir(os.path.join(d, "spec")) or _has(d, ".rspec"):
+            info["stacks"].append("ruby")
+            info["tests"].append({"runner": "rspec", "cmd": be + "rspec"})
+        elif os.path.isdir(os.path.join(d, "test")):
+            info["stacks"].append("ruby")
+            info["tests"].append({"runner": "minitest", "cmd": be + ("rake test" if _has(d, "Rakefile") else
+                                  "ruby -Ilib -Itest -e 'Dir[\"test/**/*_test.rb\"].each { |f| require File.expand_path(f) }'")})
+        if shutil.which("rubocop") and _has(d, ".rubocop.yml"):
+            info["checks"].append({"name": "rubocop", "cmd": be + "rubocop --format emacs"})
     if _has(d, "go.mod"):
         info["stacks"].append("go")
         info["tests"].append({"runner": "go", "cmd": "go test ./..."})

@@ -361,6 +361,33 @@ def junit(text):
     return res
 
 
+def junit_xml_result(cwd, max_age=None):
+    """Full result (counts + failures) from fresh JUnit XML reports, or None."""
+    import glob
+    import os
+    import time
+    import xml.etree.ElementTree as ET
+    max_age = max_age or int(os.environ.get("LEAN_REPORT_MAX_AGE", 900))
+    files = set()
+    for p in ("build/test-results/**/*.xml", "target/surefire-reports/*.xml", "**/build/test-results/**/*.xml", "**/target/surefire-reports/*.xml"):
+        files |= {f for f in glob.glob(os.path.join(cwd, p), recursive=True) if time.time() - os.path.getmtime(f) < max_age}
+    if not files:
+        return None
+    t = f = e = sk = 0
+    for x in files:
+        try:
+            r = ET.parse(x).getroot()
+        except Exception:
+            continue
+        for ts in ([r] if r.tag == "testsuite" else r.iter("testsuite")):
+            t += int(ts.get("tests", 0))
+            f += int(ts.get("failures", 0))
+            e += int(ts.get("errors", 0))
+            sk += int(ts.get("skipped", 0))
+    fails = junit_xml(cwd, max_age) if f + e else []
+    return {"runner": "junit", "counts": {"failed": f, "errors": e, "passed": t - f - e - sk, "skipped": sk}, "failures": fails}
+
+
 def junit_xml(cwd, max_age=None):
     """Failures from JUnit XML reports (gradle build/test-results, maven surefire-reports) written in the last few minutes."""
     import glob
