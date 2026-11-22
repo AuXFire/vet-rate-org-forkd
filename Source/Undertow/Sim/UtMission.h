@@ -9,6 +9,8 @@
 //   eliminate      receive `count` notifications of Eliminated(tag)
 //   lose_heat      have heat level 0
 //   wait           stay alive for `seconds`
+// Positions are either "pos": [east, north] in meters within the city the mission was written for, or
+// "geo": [latitude, longitude] anywhere on Earth.
 // Any objective may carry `timeLimit` (seconds) and `maxHeat` (fail if heat rises above it).
 // Fail conditions (mission-wide): vehicle_destroyed(tag), player_down.
 #pragma once
@@ -18,6 +20,7 @@
 #include <vector>
 
 #include "Sim/UtEvents.h"
+#include "Sim/UtGeo.h"
 #include "Sim/UtJson.h"
 #include "Sim/UtMath.h"
 
@@ -29,7 +32,9 @@ struct Objective {
     ObjectiveType type = ObjectiveType::GoTo;
     std::string text;
     std::string tag;
-    Vec2 pos;
+    Vec2 pos;                 // in the current local frame
+    LatLon geo;               // where that is on Earth, once known
+    bool hasGeo = false;
     float radius = 8.0f;
     int count = 1;
     float seconds = 0.0f;
@@ -43,6 +48,8 @@ struct MissionDef {
     std::string giver;
     std::string intro;
     Vec2 start;                           // where the mission marker sits
+    LatLon startGeo;
+    bool startHasGeo = false;
     std::vector<std::string> requires_;   // mission ids that must be complete
     std::vector<Objective> objectives;
     std::vector<std::string> failOnVehicleDestroyed;
@@ -85,6 +92,12 @@ public:
     int counter() const { return counter_; }
     // Cash earned by missions completed since the last call (the simulation pays it into the wallet).
     int takePendingReward();
+
+    // Full-scale worlds. georeference() pins every local position to the Earth using the frame the data was
+    // written in (positions given as "geo" are already pinned). relocalize() then recomputes local positions
+    // for the current frame; call it whenever the anchor moves.
+    void georeference(const LocalFrame& dataFrame);
+    void relocalize(const LocalFrame& frame);
 
     Json save() const;
     void load_state(const Json& j);

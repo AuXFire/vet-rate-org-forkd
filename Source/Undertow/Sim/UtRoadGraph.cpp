@@ -11,18 +11,37 @@ void RoadGraph::clear() {
     edges_.clear();
     edgeCells_.clear();
     nodeCells_.clear();
+    byId_.clear();
     maxSpeed_ = 1.0f;
 }
 
-int RoadGraph::addNode(Vec2 pos, bool signal) {
+int RoadGraph::addNode(Vec2 pos, bool signal, uint64_t id) {
+    if (id == 0) id = static_cast<uint64_t>(nodes_.size()) + 1U;
+    const auto found = byId_.find(id);
+    if (found != byId_.end()) return found->second;
     RoadNode n;
+    n.id = id;
     n.pos = pos;
     n.signal = signal;
     nodes_.push_back(n);
+    byId_[id] = nodeCount() - 1;
     return nodeCount() - 1;
 }
 
-int RoadGraph::addRoad(int a, int b, int lanes, float speed, RoadKind kind, bool oneWay) {
+int RoadGraph::nodeById(uint64_t id) const {
+    const auto found = byId_.find(id);
+    return found != byId_.end() ? found->second : -1;
+}
+
+int RoadGraph::findEdge(int fromNode, int toNode) const {
+    if (fromNode < 0 || fromNode >= nodeCount()) return -1;
+    for (const int ei : nodes_[static_cast<size_t>(fromNode)].out) {
+        if (edges_[static_cast<size_t>(ei)].to == toNode) return ei;
+    }
+    return -1;
+}
+
+int RoadGraph::addRoad(int a, int b, int lanes, float speed, RoadKind kind, bool oneWay, bool leftHand) {
     if (a < 0 || b < 0 || a >= nodeCount() || b >= nodeCount() || a == b) return -1;
     const Vec2 delta = nodes_[static_cast<size_t>(b)].pos - nodes_[static_cast<size_t>(a)].pos;
     RoadEdge e;
@@ -32,6 +51,7 @@ int RoadGraph::addRoad(int a, int b, int lanes, float speed, RoadKind kind, bool
     e.speed = std::max(1.0f, speed);
     e.length = std::max(0.5f, delta.length());
     e.kind = kind;
+    e.leftHand = leftHand;
     e.dir = delta.normalized();
     const int forward = edgeCount();
     edges_.push_back(e);
@@ -100,10 +120,11 @@ bool RoadGraph::load(const Json& roads, std::string* error) {
 Vec2 RoadGraph::lanePosition(int edgeIndex, float s, int lane) const {
     const RoadEdge& e = edge(edgeIndex);
     const Vec2 base = node(e.from).pos + e.dir * clampf(s, 0.0f, e.length);
-    // Two-way roads: lanes sit to the right of the centre line. One-way roads: lanes are centred on it.
+    // Two-way roads: lanes sit to the right of the centre line (to the left where traffic keeps left).
+    // One-way roads: lanes are centred on it.
     const float laneOffset = e.reverse >= 0 ? (static_cast<float>(lane) + 0.5f)
                                             : (static_cast<float>(lane) + 0.5f - static_cast<float>(e.lanes) * 0.5f);
-    return base + e.dir.right() * (laneOffset * kLaneWidth);
+    return base + e.dir.right() * (laneOffset * kLaneWidth * (e.leftHand ? -1.0f : 1.0f));
 }
 
 bool RoadGraph::findPath(int fromNode, int toNode, std::vector<int>& outEdges) const {

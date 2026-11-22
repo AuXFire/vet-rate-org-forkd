@@ -33,6 +33,32 @@ void TrafficSystem::clear(EventQueue& events) {
     warm_ = false;
 }
 
+void TrafficSystem::graphRebuilt(const std::vector<int>& oldToNew, EventQueue& events) {
+    auto mapped = [&](int old) { return old >= 0 && old < static_cast<int>(oldToNew.size()) ? oldToNew[static_cast<size_t>(old)] : -1; };
+    size_t kept = 0;
+    for (TrafficAgent& a : agents_) {
+        const int edge = mapped(a.edge);
+        if (edge < 0) {
+            events.push(EventType::TrafficRemoved, a.id);
+            continue;
+        }
+        a.edge = edge;
+        a.nextEdge = mapped(a.nextEdge);
+        const RoadEdge& e = graph_->edge(edge);
+        a.s = std::min(a.s, e.length);
+        a.lane = std::min(a.lane, e.lanes - 1);
+        a.pos = graph_->lanePosition(edge, a.s, a.lane);
+        a.heading = e.dir.angle();
+        agents_[kept++] = a;
+    }
+    agents_.resize(kept);
+    byEdge_.assign(static_cast<size_t>(graph_->edgeCount()), std::vector<int>());
+    touchedEdges_.clear();
+    obstacles_.clear();
+    spawnCandidates_.clear();
+    candidatesAge_ = 1e9f;
+}
+
 void TrafficSystem::addObstacle(Vec2 pos, Vec2 velocity, float radius) {
     if (!graph_) return;
     float s = 0.0f, dist = 0.0f;

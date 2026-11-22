@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "Sim/UtGeo.h"
 #include "Sim/UtJson.h"
 #include "Sim/UtMath.h"
 
@@ -17,6 +18,7 @@ struct District {
     float density = 0.5f;    // 0..1: how busy the streets are
     float wealth = 0.5f;     // 0..1: drives vehicle and pedestrian variety
     std::vector<Vec2> poly;
+    std::vector<LatLon> geoPoly;   // the same outline on Earth, once georeferenced
 };
 
 struct Poi {
@@ -24,11 +26,17 @@ struct Poi {
     std::string type;        // "safehouse", "shop", "garage", "police", "hospital", "mission", "property"
     std::string name;
     Vec2 pos;
+    LatLon geo;
 };
 
 class CityInfo {
 public:
     void load(const Json& city);
+    // Full-scale worlds: pin the city to the Earth using the frame its data was written in, then recompute
+    // local positions whenever the anchor moves.
+    void georeference(const LocalFrame& dataFrame);
+    void relocalize(const LocalFrame& frame);
+    bool georeferenced() const { return georeferenced_; }
 
     const std::string& name() const { return name_; }
     const std::vector<District>& districts() const { return districts_; }
@@ -43,6 +51,7 @@ private:
     std::string name_;
     std::vector<District> districts_;
     std::vector<Poi> pois_;
+    bool georeferenced_ = false;
 };
 
 }  // namespace ut

@@ -174,6 +174,20 @@ void DispatchSystem::removeUnit(int id, EventQueue& events) {
     }
 }
 
+void DispatchSystem::rebase(const FrameMap& map) {
+    for (PoliceUnit& u : units_) {
+        u.pos = map.point(u.pos);
+        u.goal = map.point(u.goal);
+        u.heading = map.heading(u.heading);
+        for (Vec2& p : u.path) p = map.point(p);
+        ++u.pathVersion;
+    }
+}
+
+void DispatchSystem::roadsChanged() {
+    for (PoliceUnit& u : units_) u.replanIn = 0.0f;
+}
+
 void DispatchSystem::clear(EventQueue& events) {
     for (const PoliceUnit& u : units_) events.push(EventType::UnitRemoved, u.id);
     units_.clear();

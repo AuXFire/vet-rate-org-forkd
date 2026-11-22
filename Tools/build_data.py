@@ -450,7 +450,9 @@ def build_city(seed=SEED):
     districts = [{"id": d[0], "name": d[1], "kind": d[2], "density": d[7], "wealth": d[8],
                   "poly": [[d[3], d[4]], [d[5], d[4]], [d[5], d[6]], [d[3], d[6]]]} for d in DISTRICTS]
     return {
-        "meta": {"name": "Port Meridian", "seed": seed, "units": "meters", "bounds": list(BOUNDS)},
+        # The anchor puts the city at a real place on Earth: open Atlantic, well clear of any land, so it can
+        # never collide with real map data. Local (0, 0) is at this latitude and longitude.
+        "meta": {"name": "Port Meridian", "seed": seed, "units": "meters", "bounds": list(BOUNDS), "anchor": [30.0, -40.0]},
         "districts": districts,
         "roads": {"kinds": ROAD_KINDS, "nodes": nodes, "edges": edges},
         "buildings": b.buildings,

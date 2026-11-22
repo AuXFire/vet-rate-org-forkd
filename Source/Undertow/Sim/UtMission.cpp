@@ -19,6 +19,12 @@ bool parseType(const std::string& s, ObjectiveType& out) {
 
 Vec2 readPos(const Json& j) { return Vec2(j.at(0).asFloat(), j.at(1).asFloat()); }
 
+bool readGeo(const Json& j, LatLon& out) {
+    if (!j.isArray() || j.size() < 2) return false;
+    out = LatLon(j.at(0).asDouble(), j.at(1).asDouble());
+    return true;
+}
+
 bool tagMatches(const std::string& wanted, const std::string& actual) { return wanted.empty() || wanted == actual; }
 
 }  // namespace mission_detail
@@ -34,6 +40,7 @@ bool MissionSystem::load(const Json& root, std::string* error) {
         def.giver = m["giver"].asString();
         def.intro = m["intro"].asString();
         def.start = mission_detail::readPos(m["start"]);
+        def.startHasGeo = mission_detail::readGeo(m["startGeo"], def.startGeo);
         def.rewardCash = m["reward"]["cash"].asInt(0);
         for (int k = 0; k < m["requires"].size(); ++k) def.requires_.push_back(m["requires"].at(k).asString());
         const Json& fails = m["fail"];
@@ -55,6 +62,7 @@ bool MissionSystem::load(const Json& root, std::string* error) {
             obj.text = o["text"].asString();
             obj.tag = o["tag"].asString();
             obj.pos = mission_detail::readPos(o["pos"]);
+            obj.hasGeo = mission_detail::readGeo(o["geo"], obj.geo);
             obj.radius = o["radius"].asFloat(8.0f);
             obj.count = std::max(1, o["count"].asInt(1));
             obj.seconds = o["seconds"].asFloat(0.0f);
@@ -80,6 +88,29 @@ bool MissionSystem::load(const Json& root, std::string* error) {
         }
     }
     return true;
+}
+
+void MissionSystem::georeference(const LocalFrame& dataFrame) {
+    for (MissionDef& def : defs_) {
+        if (!def.startHasGeo) {
+            def.startGeo = dataFrame.toGeo(def.start);
+            def.startHasGeo = true;
+        }
+        for (Objective& o : def.objectives) {
+            if (o.hasGeo) continue;
+            o.geo = dataFrame.toGeo(o.pos);
+            o.hasGeo = true;
+        }
+    }
+}
+
+void MissionSystem::relocalize(const LocalFrame& frame) {
+    for (MissionDef& def : defs_) {
+        if (def.startHasGeo) def.start = frame.toLocal(def.startGeo);
+        for (Objective& o : def.objectives) {
+            if (o.hasGeo) o.pos = frame.toLocal(o.geo);
+        }
+    }
 }
 
 const MissionDef* MissionSystem::find(const std::string& id) const {

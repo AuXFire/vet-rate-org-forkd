@@ -16,6 +16,9 @@ namespace ut {
 enum class RoadKind : uint8_t { Alley, Street, Arterial, Highway, Bridge };
 
 struct RoadNode {
+    // Identity that survives the graph being rebuilt (streamed worlds rebuild it as tiles come and go and when
+    // the origin moves). Indices do not survive; ids do.
+    uint64_t id = 0;
     Vec2 pos;
     bool signal = false;            // traffic lights here
     std::vector<int> out;           // outgoing edge indices
@@ -30,6 +33,7 @@ struct RoadEdge {
     float length = 0.0f;
     RoadKind kind = RoadKind::Street;
     int reverse = -1;               // opposite-direction edge, or -1 for one-way
+    bool leftHand = false;          // traffic keeps left here (UK, Japan, Australia, ...)
     Vec2 dir;                       // unit vector from -> to
 };
 
@@ -41,15 +45,20 @@ public:
     //   nodes: [[x, y, signal01], ...]   edges: [[a, b, lanes, speed, kindIndex, oneway01], ...]
     bool load(const Json& roads, std::string* error = nullptr);
     void clear();
-    int addNode(Vec2 pos, bool signal = false);
+    // `id` 0 = assign one (index + 1). Adding an id that already exists returns the existing node.
+    int addNode(Vec2 pos, bool signal = false, uint64_t id = 0);
     // Adds a->b and, unless `oneWay`, b->a. Returns the index of the a->b edge.
-    int addRoad(int a, int b, int lanes, float speed, RoadKind kind = RoadKind::Street, bool oneWay = false);
+    int addRoad(int a, int b, int lanes, float speed, RoadKind kind = RoadKind::Street, bool oneWay = false, bool leftHand = false);
     void buildIndex();              // call after the last addRoad()
 
     const std::vector<RoadNode>& nodes() const { return nodes_; }
     const std::vector<RoadEdge>& edges() const { return edges_; }
     const RoadNode& node(int i) const { return nodes_[static_cast<size_t>(i)]; }
     const RoadEdge& edge(int i) const { return edges_[static_cast<size_t>(i)]; }
+    // Node index for a stable id, or -1.
+    int nodeById(uint64_t id) const;
+    // The edge from one node to another, or -1.
+    int findEdge(int fromNode, int toNode) const;
     int nodeCount() const { return static_cast<int>(nodes_.size()); }
     int edgeCount() const { return static_cast<int>(edges_.size()); }
 
@@ -77,6 +86,7 @@ private:
     std::vector<RoadEdge> edges_;
     std::unordered_map<uint64_t, std::vector<int>> edgeCells_;
     std::unordered_map<uint64_t, std::vector<int>> nodeCells_;
+    std::unordered_map<uint64_t, int> byId_;
     float maxSpeed_ = 1.0f;
 };
 

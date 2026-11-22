@@ -59,6 +59,9 @@ public:
     // Drivers within `radius` flee for `seconds` (gunfire, explosions).
     void panicAt(Vec2 pos, float radius, float seconds);
     void clear(EventQueue& events);
+    // The graph this system points at was rebuilt (tiles loaded or dropped, origin moved). `oldToNew` gives the
+    // new index of every old edge, or -1 if the road is gone. Cars keep driving where their road still exists.
+    void graphRebuilt(const std::vector<int>& oldToNew, EventQueue& events);
 
     const std::vector<TrafficAgent>& agents() const { return agents_; }
     int count() const { return static_cast<int>(agents_.size()); }

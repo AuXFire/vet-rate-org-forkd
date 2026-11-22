@@ -3,7 +3,8 @@
   "name": "Port Meridian",
   "seed": 7,
   "units": "meters",
-  "bounds": [0,0,6400,5200]
+  "bounds": [0,0,6400,5200],
+  "anchor": [30.0,-40.0]
  },
  "districts": [
   {

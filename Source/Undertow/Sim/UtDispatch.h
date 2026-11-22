@@ -57,6 +57,10 @@ public:
     // A unit was destroyed or abandoned.
     void removeUnit(int id, EventQueue& events);
     void clear(EventQueue& events);
+    // The world origin moved: re-express units and their routes in the new frame.
+    void rebase(const FrameMap& map);
+    // The road graph was rebuilt: every unit plans a fresh route on its next update.
+    void roadsChanged();
 
     const std::vector<PoliceUnit>& units() const { return units_; }
     // Distance-only visibility check for headless runs. `visibility` scales range in fog and rain.

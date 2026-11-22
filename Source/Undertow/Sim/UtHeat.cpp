@@ -150,6 +150,11 @@ float HeatSystem::evadeProgress() const {
     return saturate(evadeTimer_ / tuning.evadeSeconds[level_]);
 }
 
+void HeatSystem::rebase(const FrameMap& map) {
+    lastKnown_ = map.point(lastKnown_);
+    for (Pending& p : pending_) p.pos = map.point(p.pos);
+}
+
 Json HeatSystem::save() const {
     // Pending reports and pursuit state are deliberately not saved: loading a game starts the player clean of
     // anything in flight, but keeps the heat they had earned.

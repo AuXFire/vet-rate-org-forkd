@@ -1,0 +1,50 @@
+{
+ "zoom": 14,
+ "drive": "right",
+ "tiles": [
+  [
+   8528,
+   5973
+  ],
+  [
+   8529,
+   5972
+  ],
+  [
+   8529,
+   5973
+  ],
+  [
+   8529,
+   5974
+  ],
+  [
+   8529,
+   5975
+  ],
+  [
+   8530,
+   5972
+  ],
+  [
+   8530,
+   5973
+  ],
+  [
+   8530,
+   5974
+  ]
+ ],
+ "junctions": 4024,
+ "roads": 4304,
+ "bounds": [
+  43.723224,
+  7.403742,
+  43.757436,
+  7.444726
+ ],
+ "sources": [
+  "OpenStreetMap map API, Monaco, 2026-11-22"
+ ],
+ "attribution": "Road data (c) OpenStreetMap contributors, Open Database License (ODbL) 1.0. https://www.openstreetmap.org/copyright"
+}

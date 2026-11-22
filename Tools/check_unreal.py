@@ -52,7 +52,7 @@ def check_file(path, problems):
             line, inc = generated[-1]
             if inc != base + ".generated.h":
                 problems.append("%s:%d: error: generated include must be %s.generated.h, found %s" % (rel, line, base, inc))
-            all_includes = [i + 1 for i, l in enumerate(code.split("\n")) if re.match(r"\s*#include\b", l)]
+            all_includes = [i + 1 for i, line in enumerate(code.split("\n")) if re.match(r"\s*#include\b", line)]
             if all_includes and all_includes[-1] != line:
                 problems.append("%s:%d: error: %s must be the last #include" % (rel, line, inc))
     elif generated:
@@ -72,13 +72,13 @@ def check_file(path, problems):
                 end = i
                 break
         body = lines[start + 1:end]
-        if not any("GENERATED_BODY()" in l for l in body):
+        if not any("GENERATED_BODY()" in line for line in body):
             problems.append("%s:%d: error: class %s has no GENERATED_BODY()" % (rel, start + 1, cls))
         inner = 0
-        for k, l in enumerate(body):
-            s = l.strip()
+        for k, line in enumerate(body):
+            s = line.strip()
             at_class_level = inner == 0
-            inner += strip_strings(l).count("{") - strip_strings(l).count("}")
+            inner += strip_strings(line).count("{") - strip_strings(line).count("}")
             if not at_class_level or not s.endswith(";") or "(" not in s or "{" in s:
                 continue
             if re.match(r"^(UPROPERTY|UFUNCTION|GENERATED|DECLARE_|friend|using|typedef|static_assert)\b", s) or re.search(r"=\s*(0|default|delete)\s*;$", s):

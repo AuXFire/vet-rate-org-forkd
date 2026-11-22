@@ -28,6 +28,7 @@ enum class EventType : uint8_t {
     PropertyIncome,     // a = amount paid out
     WeatherChanged,     // a = new Weather
     DayStarted,         // a = day number
+    RoadsChanged,       // the road graph was rebuilt: a = junction count. Cached routes and edge indices are stale
 };
 
 struct Event {

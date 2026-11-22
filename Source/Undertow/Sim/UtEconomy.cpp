@@ -25,6 +25,10 @@ void Economy::load(const Json& root) {
         p.id = j["id"].asString();
         p.name = j["name"].asString(p.id);
         p.pos = Vec2(j["pos"].at(0).asFloat(), j["pos"].at(1).asFloat());
+        if (j["geo"].size() >= 2) {
+            p.geo = LatLon(j["geo"].at(0).asDouble(), j["geo"].at(1).asDouble());
+            p.hasGeo = true;
+        }
         p.price = std::max(0, j["price"].asInt(0));
         p.incomePerDay = std::max(0, j["incomePerDay"].asInt(0));
         if (!p.id.empty()) properties_.push_back(p);
@@ -92,6 +96,20 @@ void Economy::load_state(const Json& j) {
     for (Property& p : properties_) {
         p.owned = false;
         for (int i = 0; i < owned.size(); ++i) p.owned = p.owned || owned.at(i).asString() == p.id;
+    }
+}
+
+void Economy::georeference(const LocalFrame& dataFrame) {
+    for (Property& p : properties_) {
+        if (p.hasGeo) continue;
+        p.geo = dataFrame.toGeo(p.pos);
+        p.hasGeo = true;
+    }
+}
+
+void Economy::relocalize(const LocalFrame& frame) {
+    for (Property& p : properties_) {
+        if (p.hasGeo) p.pos = frame.toLocal(p.geo);
     }
 }
 

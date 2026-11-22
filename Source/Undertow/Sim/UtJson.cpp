@@ -231,7 +231,12 @@ void dumpTo(const Json& j, std::string& out, int indent, int level) {
             if (std::isfinite(d) && d == std::floor(d) && std::fabs(d) < 1e15) {
                 std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(d));
             } else if (std::isfinite(d)) {
-                std::snprintf(buf, sizeof(buf), "%.9g", d);
+                // Shortest form that reads back exactly: 9 digits is enough for anything that started life as a
+                // float; latitudes and longitudes need up to 17.
+                for (const int digits : {9, 15, 16, 17}) {
+                    std::snprintf(buf, sizeof(buf), "%.*g", digits, d);
+                    if (std::strtod(buf, nullptr) == d) break;
+                }
             } else {
                 std::snprintf(buf, sizeof(buf), "0");   // JSON has no NaN/Inf
             }

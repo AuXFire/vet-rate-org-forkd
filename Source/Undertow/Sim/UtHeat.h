@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "Sim/UtEvents.h"
+#include "Sim/UtGeo.h"
 #include "Sim/UtJson.h"
 #include "Sim/UtMath.h"
 
@@ -58,6 +59,8 @@ public:
     void cancelPendingReports(Vec2 pos, float radius);
     void update(float dt, Vec2 playerPos, bool seenByPolice, EventQueue& events);
     void clear(EventQueue& events);
+    // The world origin moved: re-express stored positions in the new frame.
+    void rebase(const FrameMap& map);
 
     int level() const { return level_; }
     float points() const { return points_; }

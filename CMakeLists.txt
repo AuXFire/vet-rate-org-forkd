@@ -27,6 +27,6 @@ target_link_libraries(ut_sim PRIVATE ut_core)
 
 enable_testing()
 # One ctest entry per suite; the suite name is the first argument of UT_TEST(suite, name).
-foreach(suite json clock heat roads traffic driver dispatch mission economy crowd sim data)
+foreach(suite json clock heat roads traffic driver dispatch mission economy crowd sim data geo world)
   add_test(NAME ${suite} COMMAND ut_tests ${suite})
 endforeach()

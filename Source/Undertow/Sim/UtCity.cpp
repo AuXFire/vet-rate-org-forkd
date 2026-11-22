@@ -19,6 +19,7 @@ void CityInfo::load(const Json& city) {
     name_ = city["meta"]["name"].asString();
     districts_.clear();
     pois_.clear();
+    georeferenced_ = false;
     const Json& ds = city["districts"];
     for (int i = 0; i < ds.size(); ++i) {
         const Json& j = ds.at(i);
@@ -42,6 +43,23 @@ void CityInfo::load(const Json& city) {
         p.pos = Vec2(j["pos"].at(0).asFloat(), j["pos"].at(1).asFloat());
         if (!p.id.empty()) pois_.push_back(p);
     }
+}
+
+void CityInfo::georeference(const LocalFrame& dataFrame) {
+    for (District& d : districts_) {
+        d.geoPoly.clear();
+        for (const Vec2 p : d.poly) d.geoPoly.push_back(dataFrame.toGeo(p));
+    }
+    for (Poi& p : pois_) p.geo = dataFrame.toGeo(p.pos);
+    georeferenced_ = true;
+}
+
+void CityInfo::relocalize(const LocalFrame& frame) {
+    if (!georeferenced_) return;
+    for (District& d : districts_) {
+        for (size_t i = 0; i < d.poly.size(); ++i) d.poly[i] = frame.toLocal(d.geoPoly[i]);
+    }
+    for (Poi& p : pois_) p.pos = frame.toLocal(p.geo);
 }
 
 const District* CityInfo::districtAt(Vec2 pos) const {

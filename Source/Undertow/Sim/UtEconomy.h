@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "Sim/UtGeo.h"
 #include "Sim/UtEvents.h"
 #include "Sim/UtJson.h"
 #include "Sim/UtMath.h"
@@ -21,6 +22,8 @@ struct Property {
     std::string id;
     std::string name;
     Vec2 pos;
+    LatLon geo;
+    bool hasGeo = false;
     int price = 0;
     int incomePerDay = 0;
     bool owned = false;
@@ -43,6 +46,10 @@ public:
     bool buyProperty(const std::string& id, EventQueue& events);
     // Pays one day's income from every owned property. The simulation calls it when the day rolls over.
     void payDailyIncome(EventQueue& events);
+
+    // Full-scale worlds: see MissionSystem::georeference().
+    void georeference(const LocalFrame& dataFrame);
+    void relocalize(const LocalFrame& frame);
 
     Json save() const;
     void load_state(const Json& j);
