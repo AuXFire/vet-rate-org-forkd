@@ -32,6 +32,12 @@ namespace UndertowSimPrivate
 	}
 }
 
+UndertowConvert::FFrames& UndertowConvert::Frames()
+{
+	static FFrames Shared;
+	return Shared;
+}
+
 bool UUndertowSimSubsystem::DoesSupportWorldType(const EWorldType::Type WorldType) const
 {
 	return WorldType == EWorldType::Game || WorldType == EWorldType::PIE;
@@ -55,14 +61,21 @@ void UUndertowSimSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		return;
 	}
 	Sim = NewSim;
+	LevelFrame = Sim->frame();
+	UpdateFrames();
 	UE_LOG(LogUndertow, Log, TEXT("Simulation ready: %s, %d junctions, %d missions"), *UndertowConvert::ToFString(Sim->city.name()),
 		Sim->roads.nodeCount(), static_cast<int32>(Sim->missions.missions().size()));
+	if (Sim->worldEnabled())
+	{
+		UE_LOG(LogUndertow, Log, TEXT("World mode: level origin at %.5f, %.5f until SetWorldOrigin says otherwise"), LevelFrame.anchor().lat, LevelFrame.anchor().lon);
+	}
 }
 
 void UUndertowSimSubsystem::Deinitialize()
 {
 	delete Sim;
 	Sim = nullptr;
+	UpdateFrames();
 	Super::Deinitialize();
 }
 
@@ -88,9 +101,9 @@ void UUndertowSimSubsystem::Tick(float DeltaTime)
 	const APlayerController* PC = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr;
 	if (const APawn* Pawn = PC ? PC->GetPawn() : nullptr)
 	{
+		FollowPlayer(Pawn->GetActorLocation());
 		Input.pos = UndertowConvert::ToSim(Pawn->GetActorLocation());
-		const FVector Velocity = Pawn->GetVelocity();
-		Input.velocity = ut::Vec2(static_cast<float>(Velocity.Y * 0.01), static_cast<float>(Velocity.X * 0.01));
+		Input.velocity = UndertowConvert::VelocityToSim(Pawn->GetVelocity());
 		if (const AUndertowVehicle* Vehicle = Cast<AUndertowVehicle>(Pawn))
 		{
 			Input.inVehicle = true;
@@ -100,6 +113,10 @@ void UUndertowSimSubsystem::Tick(float DeltaTime)
 	Input.hasSightResult = bHasSightSource;
 	Input.seenByPolice = bSeenByPolice;
 
+	if (Sim->worldEnabled())
+	{
+		LoadMissingTiles();
+	}
 	Sim->tick(DeltaTime, Input);
 	for (const ut::Event& Event : Sim->drainEvents())
 	{
@@ -126,6 +143,9 @@ void UUndertowSimSubsystem::Dispatch(const ut::Event& Event)
 		break;
 	case ut::EventType::MissionFailed:
 		OnMissionEnded.Broadcast(false, FText::FromString(UndertowConvert::ToFString(Event.text)));
+		break;
+	case ut::EventType::RoadsChanged:
+		OnRoadsChanged.Broadcast();
 		break;
 	default:
 		break;
@@ -195,15 +215,131 @@ bool UUndertowSimSubsystem::LoadFromSlot(const FString& SlotName)
 		UE_LOG(LogUndertow, Warning, TEXT("Save '%s' was not loaded: %s"), *SlotName, *UndertowConvert::ToFString(Error));
 		return false;
 	}
+	if (Sim->worldEnabled())
+	{
+		// The save may have been made on the other side of the planet. Ask the level to move its origin there
+		// first (the handler calls SetWorldOrigin), then line the two frames up again.
+		const ut::LatLon Where = Sim->playerGeo();
+		if (ut::geo::distance(LevelFrame.anchor(), Where) > 10000.0)
+		{
+			OnWorldOriginRequested.Broadcast(Where.lat, Where.lon);
+		}
+		UpdateFrames();
+	}
 	// Put the player back where they saved. Traffic and police actors rebuild themselves from simulation events.
 	if (APlayerController* PC = GetWorld() ? GetWorld()->GetFirstPlayerController() : nullptr)
 	{
 		if (APawn* Pawn = PC->GetPawn())
 		{
-			Pawn->SetActorLocation(UndertowConvert::ToWorld(Sim->savedPlayerPosition(), Pawn->GetActorLocation().Z + 50.0), false, nullptr, ETeleportType::TeleportPhysics);
+			FVector Location = UndertowConvert::ToWorld(Sim->savedPlayerPosition(), Pawn->GetActorLocation().Z + 50.0);
+			// Stand on whatever ground is loaded there. Streamed terrain may not have arrived yet; see Docs/EARTH.md.
+			FHitResult Hit;
+			if (GetWorld()->LineTraceSingleByObjectType(Hit, Location + FVector(0.0, 0.0, 500000.0), Location - FVector(0.0, 0.0, 500000.0), FCollisionObjectQueryParams(ECC_WorldStatic)))
+			{
+				Location.Z = Hit.ImpactPoint.Z + 120.0;
+			}
+			Pawn->SetActorLocation(Location, false, nullptr, ETeleportType::TeleportPhysics);
 		}
 	}
 	return true;
+}
+
+void UUndertowSimSubsystem::UpdateFrames()
+{
+	UndertowConvert::FFrames& Frames = UndertowConvert::Frames();
+	Frames = UndertowConvert::FFrames();
+	if (Sim && Sim->worldEnabled())
+	{
+		// Exact where the simulation's anchor is, which is where the player is.
+		Frames.SimToLevel = ut::FrameMap(Sim->frame(), LevelFrame, Sim->frame().anchor());
+		Frames.LevelToSim = Frames.SimToLevel.inverse();
+	}
+}
+
+void UUndertowSimSubsystem::FollowPlayer(const FVector& PlayerLocation)
+{
+	if (!Sim->worldEnabled())
+	{
+		return;
+	}
+	// Keep the simulation's anchor near the player, wherever the level's own origin is.
+	const ut::LatLon Where = LevelFrame.toGeo(PlayerLocation.X * 0.01, -PlayerLocation.Y * 0.01);
+	if (ut::geo::distance(Where, Sim->frame().anchor()) > static_cast<double>(Sim->rebaseDistance))
+	{
+		Sim->setAnchor(Where);
+		UpdateFrames();
+	}
+}
+
+void UUndertowSimSubsystem::LoadMissingTiles()
+{
+	// A few per frame, nearest first, so a burst of new tiles does not stall the frame.
+	const std::vector<ut::TileKey> Missing = Sim->world.missing();   // a copy: providing a tile edits the list
+	int32 Budget = 3;
+	for (const ut::TileKey& Key : Missing)
+	{
+		if (Budget-- <= 0)
+		{
+			break;
+		}
+		const FString Path = FPaths::ProjectContentDir() / FString::Printf(TEXT("Data/World/tiles/%d/%d/%d.json"), Key.z, Key.x, Key.y);
+		FString Text;
+		if (FPaths::FileExists(Path) && FFileHelper::LoadFileToString(Text, *Path))
+		{
+			std::string Error;
+			if (!Sim->provideTile(Key, UndertowConvert::ToStd(Text), &Error))
+			{
+				UE_LOG(LogUndertow, Warning, TEXT("Road tile %s ignored: %s"), *Path, *UndertowConvert::ToFString(Error));
+			}
+		}
+		else if (bProceduralRoads)
+		{
+			Sim->world.provide(Key, ut::WorldRoads::proceduralTile(Key));
+		}
+		else
+		{
+			Sim->provideTile(Key, std::string());   // no data here: stop asking
+		}
+	}
+}
+
+void UUndertowSimSubsystem::SetWorldOrigin(double Latitude, double Longitude)
+{
+	if (!Sim)
+	{
+		return;
+	}
+	LevelFrame = ut::LocalFrame(ut::LatLon(Latitude, Longitude));
+	if (!Sim->worldEnabled())
+	{
+		Sim->enableWorld(LevelFrame.anchor());
+	}
+	UpdateFrames();   // the simulation's own anchor catches up with the player on the next tick
+}
+
+void UUndertowSimSubsystem::GetWorldOrigin(double& Latitude, double& Longitude) const
+{
+	Latitude = LevelFrame.anchor().lat;
+	Longitude = LevelFrame.anchor().lon;
+}
+
+void UUndertowSimSubsystem::WorldToLatLon(FVector Location, double& Latitude, double& Longitude) const
+{
+	const ut::LatLon Where = LevelFrame.toGeo(Location.X * 0.01, -Location.Y * 0.01);
+	Latitude = Where.lat;
+	Longitude = Where.lon;
+}
+
+FVector UUndertowSimSubsystem::LatLonToWorld(double Latitude, double Longitude, double ZCm) const
+{
+	double East = 0.0, North = 0.0;
+	LevelFrame.toLocal(ut::LatLon(Latitude, Longitude), East, North);
+	return FVector(East * 100.0, -North * 100.0, ZCm);
+}
+
+void UUndertowSimSubsystem::SetProceduralRoads(bool bEnabled)
+{
+	bProceduralRoads = bEnabled;
 }
 
 int32 UUndertowSimSubsystem::GetHeatLevel() const { return Sim ? Sim->heat.level() : 0; }

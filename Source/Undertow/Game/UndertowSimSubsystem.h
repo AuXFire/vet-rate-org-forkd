@@ -17,6 +17,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FUndertowHeatChanged, int32, NewLev
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FUndertowCashChanged, int32, Balance, int32, Delta);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FUndertowObjectiveChanged, FText, Text);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FUndertowMissionEnded, bool, bCompleted, FText, Message);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FUndertowRoadsChanged);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FUndertowOriginRequest, double, Latitude, double, Longitude);
 DECLARE_MULTICAST_DELEGATE_OneParam(FUndertowSimEvent, const ut::Event&);
 
 UCLASS()
@@ -86,10 +88,40 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Undertow")
 	bool GetLocation(const FString& PoiId, FVector& OutLocation) const;
 
+	// --- Full-scale Earth (Docs/EARTH.md)
+
+	// Says where on the globe this level's origin is, with X pointing east and Y south there: the convention
+	// of a CesiumGeoreference. Call it when the level starts and again whenever the georeference origin moves.
+	// Without a call, the origin is taken to be the anchor in city.json.
+	UFUNCTION(BlueprintCallable, Category = "Undertow|Earth")
+	void SetWorldOrigin(double Latitude, double Longitude);
+	UFUNCTION(BlueprintPure, Category = "Undertow|Earth")
+	void GetWorldOrigin(double& Latitude, double& Longitude) const;
+	UFUNCTION(BlueprintPure, Category = "Undertow|Earth")
+	void WorldToLatLon(FVector Location, double& Latitude, double& Longitude) const;
+	UFUNCTION(BlueprintPure, Category = "Undertow|Earth")
+	FVector LatLonToWorld(double Latitude, double Longitude, double ZCm) const;
+	// Where no road tile file exists, invent a street grid instead of leaving the area empty. For trying a
+	// place before its map data has been converted.
+	UFUNCTION(BlueprintCallable, Category = "Undertow|Earth")
+	void SetProceduralRoads(bool bEnabled);
+	// The road network around the player was rebuilt (new tiles arrived, old ones were dropped).
+	UPROPERTY(BlueprintAssignable, Category = "Undertow|Earth")
+	FUndertowRoadsChanged OnRoadsChanged;
+	// The game needs the level's origin somewhere else on the globe, for example after loading a save made in
+	// another city. Move the georeference there and call SetWorldOrigin from the handler.
+	UPROPERTY(BlueprintAssignable, Category = "Undertow|Earth")
+	FUndertowOriginRequest OnWorldOriginRequested;
+
 private:
 	void Dispatch(const ut::Event& Event);
+	void UpdateFrames();
+	void LoadMissingTiles();
+	void FollowPlayer(const FVector& PlayerLocation);
 
 	ut::Simulation* Sim = nullptr;
 	bool bHasSightSource = false;
 	bool bSeenByPolice = false;
+	ut::LocalFrame LevelFrame;   // where the level origin sits on the globe
+	bool bProceduralRoads = false;
 };

@@ -17,6 +17,7 @@ What one person with these tools can realistically reach is a **vertical slice**
 - Data-driven missions, economy, properties, save and load, clock and weather
 - Bystander reaction decisions
 - The generated city: connected roads, bridges, building masses, locations
+- The whole Earth at full scale: real-world coordinates, road tiles streamed around the player, moving the origin as the player travels, real roads converted from OpenStreetMap (see [EARTH.md](EARTH.md))
 
 **Written, not yet compiled or run**
 
@@ -34,9 +35,14 @@ What one person with these tools can realistically reach is a **vertical slice**
 - Ambient cars that react physically when hit
 - Lane changing and overtaking in traffic, give-way at unsignalled crossings
 - Interiors, boats, motorcycles, aircraft
-- World streaming for the full city, performance work, console targets
+- For the Earth: road tiles for more than the Monaco sample, pedestrians and buildings from map data, cars at the right height in tunnels and on stacked roads, background tile loading
+- Performance work, console targets
 
 ## Suggested order
+
+### A note on the full Earth
+
+The planet-sized world changes where the effort goes. Streamed scenery covers everywhere at mapping-app quality, so the map is no longer the bottleneck, and the visual quality at street level is capped by the streaming source. The plan below still holds: get it running in Port Meridian, make driving and police feel right, then decide which real places deserve hand-built detail on top of the streamed base.
 
 ### Milestone 1: it runs (about a week)
 
@@ -71,3 +77,4 @@ With a polished slice you can judge how the game plays, show it to people, and d
 - **Driving feel.** Chaos vehicles take real tuning to feel good, and it is the core of the game.
 - **Scope.** Every system in the "not started" list is weeks of work. Finish the slice before widening it.
 - **Asset licences.** Free samples have terms. Read them before publishing.
+- **Streaming and map licences.** A full-Earth game depends on a terrain and imagery service and on OpenStreetMap. Each has terms on attribution, caching and commercial use.

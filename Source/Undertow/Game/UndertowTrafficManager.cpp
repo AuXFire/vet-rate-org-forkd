@@ -39,13 +39,23 @@ void AUndertowTrafficManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-double AUndertowTrafficManager::GroundZ(const FVector& Location) const
+double AUndertowTrafficManager::GroundZ(const FVector& Location, bool bFromAbove) const
 {
+	double Reference = Location.Z, Up = 500.0, Down = 2000.0;
+	if (bFromAbove)
+	{
+		// Real terrain is not at height zero: start from the player's height and look 300 m either way.
+		const APlayerController* PC = GetWorld()->GetFirstPlayerController();
+		const APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+		Reference = Pawn ? Pawn->GetActorLocation().Z : Location.Z;
+		Up = 30000.0;
+		Down = 30000.0;
+	}
 	FHitResult Hit;
-	const FVector Start(Location.X, Location.Y, Location.Z + 500.0);
-	const FVector End(Location.X, Location.Y, Location.Z - 2000.0);
+	const FVector Start(Location.X, Location.Y, Reference + Up);
+	const FVector End(Location.X, Location.Y, Reference - Down);
 	const bool bHit = GetWorld()->LineTraceSingleByObjectType(Hit, Start, End, FCollisionObjectQueryParams(ECC_WorldStatic));
-	return bHit ? Hit.ImpactPoint.Z : Location.Z;
+	return bHit ? Hit.ImpactPoint.Z : Reference;
 }
 
 AActor* AUndertowTrafficManager::AcquireAmbient(int32 Archetype, const FVector& Location, const FRotator& Rotation)
@@ -94,7 +104,7 @@ void AUndertowTrafficManager::HandleSimEvent(const ut::Event& Event)
 	case ut::EventType::TrafficSpawned:
 	{
 		FVector Location = UndertowConvert::ToWorld(Event.pos);
-		Location.Z = GroundZ(Location);
+		Location.Z = GroundZ(Location, true);
 		if (AActor* Actor = AcquireAmbient(Event.b, Location, FRotator::ZeroRotator))
 		{
 			AmbientByAgent.Add(Event.a, Actor);
@@ -111,7 +121,7 @@ void AUndertowTrafficManager::HandleSimEvent(const ut::Event& Event)
 			break;   // dispatch still runs; without a class the units stay simulation-only
 		}
 		FVector Location = UndertowConvert::ToWorld(Event.pos);
-		Location.Z = GroundZ(Location) + 80.0;
+		Location.Z = GroundZ(Location, true) + 80.0;
 		FActorSpawnParameters Params;
 		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 		if (AUndertowVehicle* Vehicle = GetWorld()->SpawnActor<AUndertowVehicle>(PoliceVehicleClass, Location, FRotator::ZeroRotator, Params))

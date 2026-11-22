@@ -43,7 +43,9 @@ private:
 	void HandleSimEvent(const ut::Event& Event);
 	AActor* AcquireAmbient(int32 Archetype, const FVector& Location, const FRotator& Rotation);
 	void ReleaseAmbient(int32 AgentId);
-	double GroundZ(const FVector& Location) const;
+	// Ground height under a point. `bFromAbove`: search from high above the player (for a vehicle that has just
+	// appeared); otherwise search close to Location.Z, which keeps a vehicle on its own level under bridges.
+	double GroundZ(const FVector& Location, bool bFromAbove = false) const;
 	void UpdateAmbient(float DeltaTime);
 	void UpdatePolice();
 

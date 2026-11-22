@@ -123,6 +123,19 @@ UT_TEST(geo, frame_maps_match_the_exact_conversion) {
     const Vec2 d = Vec2::fromAngle(0.7f);
     UT_CHECK_NEAR(map.direction(d).angle(), map.heading(0.7f), 1e-5);
     UT_CHECK(std::fabs(map.rotation()) > 1e-5f && std::fabs(map.rotation()) < 0.01f);
+    // In doubles it stays exact when one frame's origin is far from the action (a level origin 8 km away).
+    const LocalFrame level(from.toGeo(-6000.0, 5000.0));
+    const FrameMap toLevel(to, level, to.anchor());
+    double e = 0.0, n = 0.0, exactE = 0.0, exactN = 0.0;
+    toLevel.point(120.0, -80.0, e, n);
+    level.toLocal(to.toGeo(120.0, -80.0), exactE, exactN);
+    UT_CHECK_NEAR(e, exactE, 0.002);
+    UT_CHECK_NEAR(n, exactN, 0.002);
+    UT_CHECK(std::fabs(e) > 7000.0);
+    double backE = 0.0, backN = 0.0;
+    toLevel.inverse().point(e, n, backE, backN);
+    UT_CHECK_NEAR(backE, 120.0, 1e-6);
+    UT_CHECK_NEAR(backN, -80.0, 1e-6);
     // The identity map changes nothing.
     UT_CHECK(distance(FrameMap().point(Vec2(12.5f, -3.0f)), Vec2(12.5f, -3.0f)) < 1e-6f);
 }

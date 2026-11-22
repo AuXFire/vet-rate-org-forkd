@@ -150,9 +150,16 @@ FrameMap::FrameMap(const LocalFrame& from, const LocalFrame& to, LatLon centre) 
     rotation_ = static_cast<float>(angle);
 }
 
+void FrameMap::point(double east, double north, double& outEast, double& outNorth) const {
+    const double dx = east - fromE_, dy = north - fromN_;
+    outEast = toE_ + cos_ * dx - sin_ * dy;
+    outNorth = toN_ + sin_ * dx + cos_ * dy;
+}
+
 Vec2 FrameMap::point(Vec2 p) const {
-    const double dx = static_cast<double>(p.x) - fromE_, dy = static_cast<double>(p.y) - fromN_;
-    return Vec2(static_cast<float>(toE_ + cos_ * dx - sin_ * dy), static_cast<float>(toN_ + sin_ * dx + cos_ * dy));
+    double e = 0.0, n = 0.0;
+    point(static_cast<double>(p.x), static_cast<double>(p.y), e, n);
+    return Vec2(static_cast<float>(e), static_cast<float>(n));
 }
 
 Vec2 FrameMap::direction(Vec2 d) const {

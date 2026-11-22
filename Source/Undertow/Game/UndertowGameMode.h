@@ -19,6 +19,7 @@ public:
 	virtual void HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer) override;
 
 	// Location id from city.json where a new game starts.
+	// Leave empty to start at the level's Player Start instead (levels set on the real Earth).
 	UPROPERTY(EditDefaultsOnly, Category = "Undertow")
 	FString StartLocationId = TEXT("safehouse_narrows");
 	// Set to a Blueprint subclass that has vehicle classes assigned.

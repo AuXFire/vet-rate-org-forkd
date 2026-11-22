@@ -36,7 +36,7 @@ If it fails, the errors will almost certainly be in `Source/Undertow/Game`. The 
 4. Make sure the level has a **Player Start** (anywhere; the game mode moves the player to Tolly's lockup).
 5. In **Project Settings > Maps & Modes**, set this level as the Editor Startup Map and Game Default Map.
 
-The level is oriented like `Docs/map.svg` when viewed from above: X is north, Y is east.
+The level is oriented like `Docs/map.svg` with X pointing east and Y pointing south, the same convention Cesium uses, so the city and a streamed Earth agree.
 
 ## 5. Input
 
@@ -88,7 +88,11 @@ Press Play and go through this list. Each item exercises one part of the bridge.
 
 The Output Log line `Simulation ready: Port Meridian, 2083 junctions, 6 missions` confirms the data loaded. If it is missing, look for `LogUndertow` errors above it.
 
-## 8. Where real quality comes from
+## 8. The real Earth
+
+Port Meridian is a test city. To play on the real planet at full scale, with streamed terrain and real roads, follow [EARTH.md](EARTH.md) once the steps above work.
+
+## 9. Where real quality comes from
 
 The blockout is for testing. For the look and feel you are after, build on what Epic gives away:
 

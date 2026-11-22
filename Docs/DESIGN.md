@@ -13,6 +13,14 @@ It is a third-person open-world crime game: drive, shoot, steal, run from the po
 3. **Escapes are earned.** Losing the police means breaking line of sight and getting out of the search area, not waiting out a timer in the open.
 4. **Everything is data.** Missions, prices, vehicles, weapons and tuning live in JSON, so content does not need a programmer.
 
+## The world
+
+The world is the Earth at full scale. Terrain, imagery and buildings are streamed; roads come from OpenStreetMap; traffic, police, missions and the economy run on those roads anywhere on the globe. A player can drive out of one city and, hours later, into another.
+
+Streamed scenery is good from a distance and rough up close, so the places where the story happens are built by hand and pinned to a latitude and longitude. Port Meridian is the first. It is fictional, so it sits in open Atlantic water (30°N 40°W) where it cannot collide with a real place; later hand-built areas can replace real districts where they stand. Missions can be placed in either: by local position inside a hand-built city, or by latitude and longitude anywhere.
+
+How it works and how to set it up: [EARTH.md](EARTH.md).
+
 ## Port Meridian
 
 Roughly 6 km by 5 km, split by the Wren River, with Meridian Bay to the south. Four bridges cross the river.

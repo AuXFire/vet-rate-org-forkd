@@ -71,6 +71,8 @@ public:
     FrameMap(const LocalFrame& from, const LocalFrame& to, LatLon centre);
 
     Vec2 point(Vec2 p) const;
+    // The same in doubles, for hosts whose own origin may be many kilometres from the player.
+    void point(double east, double north, double& outEast, double& outNorth) const;
     Vec2 direction(Vec2 d) const;
     float heading(float h) const { return wrapAngle(h + rotation_); }
     // How far the new frame's axes are turned relative to the old one's, radians. Tiny except near the poles.
