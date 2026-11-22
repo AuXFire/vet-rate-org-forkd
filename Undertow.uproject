@@ -1,0 +1,18 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "",
+	"Category": "",
+	"Description": "Undertow: an open-world crime game set in Port Meridian.",
+	"Modules": [
+		{
+			"Name": "Undertow",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [ "Engine", "CoreUObject", "UMG" ]
+		}
+	],
+	"Plugins": [
+		{ "Name": "ChaosVehiclesPlugin", "Enabled": true },
+		{ "Name": "ModelingToolsEditorMode", "Enabled": true, "TargetAllowList": [ "Editor" ] }
+	]
+}
