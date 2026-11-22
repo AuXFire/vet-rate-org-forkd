@@ -7,9 +7,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Core/UtJson.h"
-#include "Core/UtMath.h"
-#include "Core/UtRng.h"
+#include "Sim/UtJson.h"
+#include "Sim/UtMath.h"
+#include "Sim/UtRng.h"
 
 namespace ut {
 

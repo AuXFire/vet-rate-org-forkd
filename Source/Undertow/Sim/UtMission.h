@@ -17,9 +17,9 @@
 #include <string>
 #include <vector>
 
-#include "Core/UtEvents.h"
-#include "Core/UtJson.h"
-#include "Core/UtMath.h"
+#include "Sim/UtEvents.h"
+#include "Sim/UtJson.h"
+#include "Sim/UtMath.h"
 
 namespace ut {
 

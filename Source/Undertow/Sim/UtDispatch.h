@@ -7,11 +7,11 @@
 #include <cstdint>
 #include <vector>
 
-#include "Core/UtEvents.h"
-#include "Core/UtHeat.h"
-#include "Core/UtJson.h"
-#include "Core/UtRng.h"
-#include "Core/UtRoadGraph.h"
+#include "Sim/UtEvents.h"
+#include "Sim/UtHeat.h"
+#include "Sim/UtJson.h"
+#include "Sim/UtRng.h"
+#include "Sim/UtRoadGraph.h"
 
 namespace ut {
 

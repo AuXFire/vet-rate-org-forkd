@@ -1,0 +1,19 @@
+{
+  // Hand-tuned gameplay numbers. Every field is optional: anything left out keeps the default in the code.
+  "clock": { "timeScale": 30 },
+  "heat": {
+    "points": {
+      "trespass": 2, "reckless_driving": 3, "property_damage": 5, "vehicle_theft": 12, "assault": 14,
+      "robbery": 30, "gunfire": 22, "vehicular_assault": 35, "assault_on_officer": 60
+    },
+    "thresholds": [0, 10, 30, 70, 130, 220],
+    "evadeSeconds": [0, 20, 35, 55, 80, 110],
+    "reportDelay": 7,
+    "searchRadiusStart": 60,
+    "searchRadiusGrowth": 4,
+    "searchRadiusMax": 400
+  },
+  "traffic": { "maxAgents": 110, "spawnMin": 110, "spawnMax": 300, "despawn": 380, "signalCycle": 36, "archetypes": 8 },
+  "dispatch": { "unitsPerLevel": [0, 1, 2, 3, 5, 7], "spawnMin": 150, "spawnMax": 280, "pursuitSpeed": 30, "searchSpeed": 16 },
+  "crowd": { "maxPedestrians": 60 }
+}

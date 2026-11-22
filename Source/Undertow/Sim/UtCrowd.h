@@ -4,8 +4,8 @@
 
 #include <cstdint>
 
-#include "Core/UtMath.h"
-#include "Core/UtRng.h"
+#include "Sim/UtMath.h"
+#include "Sim/UtRng.h"
 
 namespace ut {
 

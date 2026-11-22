@@ -1,0 +1,126 @@
+{
+ "startingCash": 500,
+ "items": [
+  {
+   "id": "pistol_m9k",
+   "name": "Harlan M9K pistol",
+   "category": "weapon",
+   "price": 650
+  },
+  {
+   "id": "smg_wasp",
+   "name": "Wasp-45 submachine gun",
+   "category": "weapon",
+   "price": 2400
+  },
+  {
+   "id": "shotgun_dockhand",
+   "name": "Dockhand 12 shotgun",
+   "category": "weapon",
+   "price": 1900
+  },
+  {
+   "id": "rifle_crane",
+   "name": "Crane AR-7 rifle",
+   "category": "weapon",
+   "price": 4800
+  },
+  {
+   "id": "ammo_pistol",
+   "name": "Pistol rounds (48)",
+   "category": "ammo",
+   "price": 60
+  },
+  {
+   "id": "ammo_smg",
+   "name": "SMG rounds (120)",
+   "category": "ammo",
+   "price": 140
+  },
+  {
+   "id": "ammo_shotgun",
+   "name": "Shells (24)",
+   "category": "ammo",
+   "price": 110
+  },
+  {
+   "id": "ammo_rifle",
+   "name": "Rifle rounds (90)",
+   "category": "ammo",
+   "price": 220
+  },
+  {
+   "id": "armor_vest",
+   "name": "Ballistic vest",
+   "category": "consumable",
+   "price": 900
+  },
+  {
+   "id": "medkit",
+   "name": "First aid kit",
+   "category": "consumable",
+   "price": 150
+  },
+  {
+   "id": "respray",
+   "name": "Respray (clears vehicle description)",
+   "category": "vehicle_mod",
+   "price": 400
+  },
+  {
+   "id": "repair",
+   "name": "Full repair",
+   "category": "vehicle_mod",
+   "price": 600
+  },
+  {
+   "id": "tune_engine",
+   "name": "Engine tune",
+   "category": "vehicle_mod",
+   "price": 3500
+  },
+  {
+   "id": "tyres_wet",
+   "name": "Wet-weather tyres",
+   "category": "vehicle_mod",
+   "price": 1200
+  }
+ ],
+ "properties": [
+  {
+   "id": "prop_carwash",
+   "name": "Saltgrass Car Wash",
+   "pos": [1100.4,3457.5],
+   "price": 18000,
+   "incomePerDay": 900
+  },
+  {
+   "id": "prop_bar",
+   "name": "The Slack Tide (bar)",
+   "pos": [1053.2,1881.7],
+   "price": 32000,
+   "incomePerDay": 1700
+  },
+  {
+   "id": "prop_boatshed",
+   "name": "Halfmoon Boat Shed",
+   "pos": [3537.4,3546.6],
+   "price": 45000,
+   "incomePerDay": 2400
+  },
+  {
+   "id": "prop_printshop",
+   "name": "Lantern Print Works",
+   "pos": [2610.9,2107.2],
+   "price": 70000,
+   "incomePerDay": 3900
+  },
+  {
+   "id": "prop_depot",
+   "name": "Northgate Freight Depot",
+   "pos": [2225.8,4306.7],
+   "price": 120000,
+   "incomePerDay": 7000
+  }
+ ]
+}

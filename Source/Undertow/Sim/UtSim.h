@@ -10,17 +10,17 @@
 #include <string>
 #include <vector>
 
-#include "Core/UtCity.h"
-#include "Core/UtClock.h"
-#include "Core/UtCrowd.h"
-#include "Core/UtDispatch.h"
-#include "Core/UtEconomy.h"
-#include "Core/UtEvents.h"
-#include "Core/UtHeat.h"
-#include "Core/UtMission.h"
-#include "Core/UtRng.h"
-#include "Core/UtRoadGraph.h"
-#include "Core/UtTraffic.h"
+#include "Sim/UtCity.h"
+#include "Sim/UtClock.h"
+#include "Sim/UtCrowd.h"
+#include "Sim/UtDispatch.h"
+#include "Sim/UtEconomy.h"
+#include "Sim/UtEvents.h"
+#include "Sim/UtHeat.h"
+#include "Sim/UtMission.h"
+#include "Sim/UtRng.h"
+#include "Sim/UtRoadGraph.h"
+#include "Sim/UtTraffic.h"
 
 namespace ut {
 

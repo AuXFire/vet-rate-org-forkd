@@ -3,9 +3,9 @@
 
 #include <cstdint>
 
-#include "Core/UtEvents.h"
-#include "Core/UtJson.h"
-#include "Core/UtRng.h"
+#include "Sim/UtEvents.h"
+#include "Sim/UtJson.h"
+#include "Sim/UtRng.h"
 
 namespace ut {
 

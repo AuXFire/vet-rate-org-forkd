@@ -1,0 +1,17 @@
+{
+  // Ambient traffic picks from the first `traffic.archetypes` entries (see tuning.json), in this order.
+  // mass kg, power kW, topSpeed km/h. "tags" are what missions match against (enter_vehicle / deliver).
+  "vehicles": [
+    { "id": "tern", "name": "Vessa Tern", "class": "compact", "tags": ["compact"], "mass": 1150, "power": 78, "topSpeed": 165, "drive": "fwd", "seats": 4 },
+    { "id": "calder", "name": "Brightwell Calder", "class": "sedan", "tags": ["sedan"], "mass": 1480, "power": 125, "topSpeed": 195, "drive": "fwd", "seats": 4 },
+    { "id": "marrow", "name": "Hale Marrow", "class": "suv", "tags": ["suv"], "mass": 2050, "power": 185, "topSpeed": 190, "drive": "awd", "seats": 5 },
+    { "id": "dray", "name": "Calloway Dray", "class": "van", "tags": ["van"], "mass": 2300, "power": 110, "topSpeed": 150, "drive": "rwd", "seats": 2 },
+    { "id": "pinnace", "name": "Orrin Pinnace", "class": "coupe", "tags": ["coupe", "sports"], "mass": 1380, "power": 260, "topSpeed": 255, "drive": "rwd", "seats": 2 },
+    { "id": "fathom", "name": "Brightwell Fathom", "class": "sedan", "tags": ["sedan", "executive"], "mass": 1820, "power": 240, "topSpeed": 240, "drive": "rwd", "seats": 4 },
+    { "id": "skiff", "name": "Vessa Skiff", "class": "hatchback", "tags": ["compact", "hatchback"], "mass": 1050, "power": 66, "topSpeed": 160, "drive": "fwd", "seats": 4 },
+    { "id": "stevedore", "name": "Calloway Stevedore", "class": "truck", "tags": ["truck"], "mass": 7400, "power": 210, "topSpeed": 115, "drive": "rwd", "seats": 2 },
+    { "id": "warden", "name": "Hale Warden (police)", "class": "police", "tags": ["police"], "mass": 1900, "power": 270, "topSpeed": 235, "drive": "awd", "seats": 4 },
+    { "id": "gale", "name": "Orrin Gale", "class": "super", "tags": ["super", "sports"], "mass": 1420, "power": 480, "topSpeed": 320, "drive": "awd", "seats": 2 },
+    { "id": "lark", "name": "Tessel Lark", "class": "motorcycle", "tags": ["motorcycle"], "mass": 210, "power": 75, "topSpeed": 215, "drive": "rwd", "seats": 2 }
+  ]
+}

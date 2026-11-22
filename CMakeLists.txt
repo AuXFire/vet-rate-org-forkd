@@ -1,4 +1,4 @@
-# Builds the engine-independent core (Source/Undertow/Core) outside Unreal, with its tests and a headless
+# Builds the engine-independent core (Source/Undertow/Sim) outside Unreal, with its tests and a headless
 # simulation. Unreal never sees this file: UnrealBuildTool compiles the same sources as part of the game module.
 cmake_minimum_required(VERSION 3.16)
 project(UndertowCore CXX)
@@ -10,7 +10,7 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
 
-file(GLOB UT_CORE_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/Source/Undertow/Core/*.cpp)
+file(GLOB UT_CORE_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/Source/Undertow/Sim/*.cpp)
 add_library(ut_core STATIC ${UT_CORE_SOURCES})
 target_include_directories(ut_core PUBLIC ${CMAKE_SOURCE_DIR}/Source/Undertow)
 # Match what Unreal enforces (shadowing is an error there; exceptions and RTTI are off) so code that is clean
@@ -27,6 +27,6 @@ target_link_libraries(ut_sim PRIVATE ut_core)
 
 enable_testing()
 # One ctest entry per suite; the suite name is the first argument of UT_TEST(suite, name).
-foreach(suite json clock heat roads traffic driver dispatch mission economy crowd sim)
+foreach(suite json clock heat roads traffic driver dispatch mission economy crowd sim data)
   add_test(NAME ${suite} COMMAND ut_tests ${suite})
 endforeach()

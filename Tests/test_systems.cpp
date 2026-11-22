@@ -1,12 +1,12 @@
 #include <cmath>
 
-#include "Core/UtCrowd.h"
-#include "Core/UtDispatch.h"
-#include "Core/UtDriver.h"
-#include "Core/UtEconomy.h"
-#include "Core/UtMission.h"
-#include "Core/UtSim.h"
-#include "Core/UtTraffic.h"
+#include "Sim/UtCrowd.h"
+#include "Sim/UtDispatch.h"
+#include "Sim/UtDriver.h"
+#include "Sim/UtEconomy.h"
+#include "Sim/UtMission.h"
+#include "Sim/UtSim.h"
+#include "Sim/UtTraffic.h"
 #include "ut_test.h"
 
 using namespace ut;

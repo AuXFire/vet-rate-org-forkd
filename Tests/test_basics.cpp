@@ -1,7 +1,7 @@
-#include "Core/UtClock.h"
-#include "Core/UtHeat.h"
-#include "Core/UtJson.h"
-#include "Core/UtRoadGraph.h"
+#include "Sim/UtClock.h"
+#include "Sim/UtHeat.h"
+#include "Sim/UtJson.h"
+#include "Sim/UtRoadGraph.h"
 #include "ut_test.h"
 
 using namespace ut;

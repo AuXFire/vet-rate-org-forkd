@@ -1,0 +1,11 @@
+{
+  // damage per hit (player health is 100), rpm = rounds per minute, range m, spread degrees,
+  // noise m = how far the shot is heard (drives bystander reactions and gunfire reports).
+  "weapons": [
+    { "id": "fists", "name": "Unarmed", "slot": "melee", "damage": 12, "rpm": 110, "magazine": 0, "range": 1.6, "spread": 0, "noise": 6, "auto": false },
+    { "id": "pistol_m9k", "name": "Harlan M9K", "slot": "sidearm", "damage": 24, "rpm": 330, "magazine": 12, "range": 55, "spread": 1.4, "noise": 70, "auto": false, "ammo": "ammo_pistol" },
+    { "id": "smg_wasp", "name": "Wasp-45", "slot": "primary", "damage": 17, "rpm": 780, "magazine": 30, "range": 45, "spread": 2.8, "noise": 75, "auto": true, "ammo": "ammo_smg" },
+    { "id": "shotgun_dockhand", "name": "Dockhand 12", "slot": "primary", "damage": 14, "pellets": 8, "rpm": 70, "magazine": 6, "range": 22, "spread": 7.5, "noise": 90, "auto": false, "ammo": "ammo_shotgun" },
+    { "id": "rifle_crane", "name": "Crane AR-7", "slot": "primary", "damage": 30, "rpm": 620, "magazine": 30, "range": 120, "spread": 1.1, "noise": 100, "auto": true, "ammo": "ammo_rifle" }
+  ]
+}

@@ -1,0 +1,240 @@
+{
+ "missions": [
+  {
+   "id": "m01_slack_water",
+   "title": "Slack Water",
+   "giver": "Tolly Reyne",
+   "start": [777.1,2155.2],
+   "intro": "Tolly has a van sitting at the dry dock that needs to be somewhere else before the morning shift.",
+   "reward": {
+    "cash": 800
+   },
+   "objectives": [
+    {
+     "type": "goto",
+     "pos": [1001.5,996.8],
+     "radius": 14,
+     "text": "Go to Number Four Dry Dock"
+    },
+    {
+     "type": "enter_vehicle",
+     "tag": "van",
+     "text": "Get in the van"
+    },
+    {
+     "type": "deliver",
+     "tag": "van",
+     "pos": [777.1,2155.2],
+     "radius": 14,
+     "maxHeat": 2,
+     "text": "Drive the van to Tolly's lockup without drawing attention"
+    }
+   ],
+   "fail": [
+    {
+     "type": "vehicle_destroyed",
+     "tag": "van"
+    },
+    {
+     "type": "player_down"
+    }
+   ]
+  },
+  {
+   "id": "m02_paper_trail",
+   "title": "Paper Trail",
+   "giver": "Tolly Reyne",
+   "start": [777.1,2155.2],
+   "requires": ["m01_slack_water"],
+   "intro": "The Brass Ring keeps its books in three places. Tolly wants all three.",
+   "reward": {
+    "cash": 1400
+   },
+   "objectives": [
+    {
+     "type": "collect",
+     "tag": "ledger",
+     "count": 3,
+     "text": "Take the three ledgers"
+    },
+    {
+     "type": "lose_heat",
+     "text": "Lose the police"
+    },
+    {
+     "type": "goto",
+     "pos": [777.1,2155.2],
+     "radius": 12,
+     "text": "Bring the ledgers to Tolly"
+    }
+   ]
+  },
+  {
+   "id": "m03_night_ferry",
+   "title": "Night Ferry",
+   "giver": "Odile Marsh",
+   "start": [4039.9,1027.6],
+   "requires": ["m02_paper_trail"],
+   "intro": "Odile has a buyer for a coupe parked in the Aldergate car park. The owner has not been asked.",
+   "reward": {
+    "cash": 2200
+   },
+   "objectives": [
+    {
+     "type": "goto",
+     "pos": [4530.7,2549.5],
+     "radius": 16,
+     "text": "Go to the Aldergate Car Park"
+    },
+    {
+     "type": "enter_vehicle",
+     "tag": "coupe",
+     "text": "Take the coupe"
+    },
+    {
+     "type": "lose_heat",
+     "text": "Lose the police"
+    },
+    {
+     "type": "deliver",
+     "tag": "coupe",
+     "pos": [4039.9,1027.6],
+     "radius": 14,
+     "timeLimit": 300,
+     "text": "Deliver the coupe to Pier Nine Motors"
+    }
+   ],
+   "fail": [
+    {
+     "type": "vehicle_destroyed",
+     "tag": "coupe"
+    },
+    {
+     "type": "player_down"
+    }
+   ]
+  },
+  {
+   "id": "m04_brass_tacks",
+   "title": "Brass Tacks",
+   "giver": "Tolly Reyne",
+   "start": [1053.2,1881.7],
+   "requires": ["m02_paper_trail"],
+   "intro": "The ledgers named a warehouse on the boardwalk side. The Brass Ring will not hand it over politely.",
+   "reward": {
+    "cash": 3000
+   },
+   "objectives": [
+    {
+     "type": "goto",
+     "pos": [5257.7,898.3],
+     "radius": 20,
+     "text": "Go to the Brass Ring warehouse"
+    },
+    {
+     "type": "eliminate",
+     "tag": "brass_enforcer",
+     "count": 5,
+     "text": "Clear out the enforcers"
+    },
+    {
+     "type": "collect",
+     "tag": "manifest",
+     "count": 1,
+     "text": "Find the shipping manifest"
+    },
+    {
+     "type": "lose_heat",
+     "text": "Lose the police"
+    }
+   ]
+  },
+  {
+   "id": "m05_customs",
+   "title": "Customs",
+   "giver": "Odile Marsh",
+   "start": [4039.9,1027.6],
+   "requires": ["m03_night_ferry","m04_brass_tacks"],
+   "intro": "The manifest lists a container that clears the Customs Yard tonight. It needs to clear it early.",
+   "reward": {
+    "cash": 5000
+   },
+   "objectives": [
+    {
+     "type": "goto",
+     "pos": [1693.1,827.6],
+     "radius": 18,
+     "text": "Get into the Customs Yard"
+    },
+    {
+     "type": "wait",
+     "seconds": 45,
+     "text": "Hold the yard while Odile cuts the seals"
+    },
+    {
+     "type": "enter_vehicle",
+     "tag": "truck",
+     "text": "Take the truck"
+    },
+    {
+     "type": "deliver",
+     "tag": "truck",
+     "pos": [2225.8,4306.7],
+     "radius": 18,
+     "timeLimit": 420,
+     "text": "Drive the truck to the Northgate Freight Depot"
+    }
+   ],
+   "fail": [
+    {
+     "type": "vehicle_destroyed",
+     "tag": "truck"
+    },
+    {
+     "type": "player_down"
+    }
+   ]
+  },
+  {
+   "id": "m06_high_water",
+   "title": "High Water",
+   "giver": "Ines Varga",
+   "start": [3779.5,2736.5],
+   "requires": ["m05_customs"],
+   "intro": "The container held the Harbor Commissioner's own paperwork. Time to return it in person.",
+   "reward": {
+    "cash": 9000
+   },
+   "objectives": [
+    {
+     "type": "goto",
+     "pos": [5554.4,3413.1],
+     "radius": 20,
+     "text": "Drive up to the Finch-Mercer residence"
+    },
+    {
+     "type": "eliminate",
+     "tag": "villa_guard",
+     "count": 6,
+     "text": "Get past the security detail"
+    },
+    {
+     "type": "collect",
+     "tag": "inquiry_file",
+     "count": 1,
+     "text": "Take the inquiry file from the study"
+    },
+    {
+     "type": "lose_heat",
+     "text": "Lose the police"
+    },
+    {
+     "type": "goto",
+     "pos": [4651.4,1266.7],
+     "radius": 14,
+     "text": "Meet Tolly on the boardwalk"
+    }
+   ]
+  }
+ ]
+}
