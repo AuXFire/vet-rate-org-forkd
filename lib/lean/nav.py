@@ -62,12 +62,12 @@ LEAD_KW = re.compile(r"^\s*(?:(?:export|default|declare|abstract|async|pub(?:\([
 NEW_DECL = re.compile(r"^(?:(?:func|type|var|let|const|fn|pub|struct|enum|trait|impl|class|interface|export|declare|namespace|module|def|mod|use)\b|#\[|@|//|/\*)")
 
 
-def _brace_end(lines, i, rust=False):
+def _brace_end(lines, i, rust=False, body=False):
     """End line of the declaration starting at i: bracket depth over (), [], {} plus continuation markers."""
     depth, opened, n, inblk = 0, False, len(lines), False
     first = re.sub(r"//.*$", "", STR_GENERIC.sub('""', lines[i])).rstrip()
     lk = LEAD_KW.match(first)
-    need_body = bool(lk and lk.group(1) in NEEDS_BODY) and not first.endswith(";") and "=" not in first.split("(")[0]
+    need_body = body or (bool(lk and lk.group(1) in NEEDS_BODY) and not first.endswith(";") and "=" not in first.split("(")[0])
     curly = False
     for j in range(i, min(n, i + 4000)):
         raw = (STR_RUST if rust else STR_GENERIC).sub('""', lines[j])     # strings first: "/*" in a string is not a comment
@@ -94,7 +94,7 @@ def _brace_end(lines, i, rust=False):
             k = j + 1
             while k < n and not lines[k].strip():
                 k += 1
-            if k < n and not NEW_DECL.match(lines[k]):
+            if k < n and (body or not NEW_DECL.match(lines[k])):
                 continue        # signature still running (where-clauses, wrapped params): body not opened yet
         if st.endswith(CONT_END) and not st.endswith(("++", "--")):
             continue
@@ -113,6 +113,67 @@ def _brace_end(lines, i, rust=False):
 def _sig(l):
     s = l.strip().rstrip("{").rstrip()
     return s if len(s) <= 110 else s[:107] + "…"
+
+
+CPP_EXT = {".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".inl"}
+CPP_TYPE = re.compile(r"^\s*(?:template\s*<.*>\s*)?(?:typedef\s+)?(class|struct|union|namespace|enum(?:\s+(?:class|struct))?)\b(?:\s+(?:[A-Z][A-Z0-9_]*_API|alignas\([^)]*\)))*\s*([A-Za-z_][\w:]*)?")
+CPP_FUNC = re.compile(r"^\s*(?:template\s*<.*>\s*)?(?:[\w:<>,*&\[\]\s~]+?[\s*&]+)?((?:[A-Za-z_]\w*(?:<[^()]*>)?::)*(?:~?[A-Za-z_]\w*|operator\s*(?:\(\)|[^\s(]+)))\s*\(")
+CPP_NOT_FUNC = {"if", "for", "while", "switch", "return", "sizeof", "catch", "else", "new", "delete", "case", "throw", "do",
+                "static_assert", "defined", "alignof", "decltype", "assert", "typeid", "co_return", "co_await", "noexcept", "requires"}
+
+
+def outline_cpp(lines):
+    """C/C++ outline: namespaces, types, and functions (definitions anywhere, declarations inside types).
+    Tracks brace scopes so statements inside function bodies are never mistaken for declarations."""
+    syms, scope, depth, pending, inblk = [], [], 0, None, False     # scope: [(kind, depth_inside)]
+    for i, raw in enumerate(lines):
+        code = STR_GENERIC.sub('""', raw)
+        if inblk:
+            if "*/" not in code:
+                continue
+            code, inblk = code.split("*/", 1)[1], False
+        code = re.sub(r"/\*.*?\*/", "", code)
+        if "/*" in code:
+            code, inblk = code.split("/*", 1)[0], True
+        code = re.sub(r"//.*$", "", code).rstrip()
+        st = code.strip()
+        if not st or st.startswith("#"):
+            continue
+        decl_scope = all(k in ("ns", "type") for k, _ in scope)
+        if decl_scope and pending is None:
+            tm = CPP_TYPE.match(code)
+            if tm and (not st.endswith(";") or "{" in st) and "(" not in st.split("{")[0]:
+                kind = tm.group(1).split()[0]
+                name = tm.group(2) or "(anonymous)"
+                end = _brace_end(lines, i)
+                syms.append((i + 1, end, len(scope), _sig(raw), name))
+                pending = "ns" if kind == "namespace" else "enum" if kind == "enum" else "type"
+            else:
+                fm = CPP_FUNC.match(code)
+                name = fm.group(1) if fm else None
+                base = (name or "").split("::")[-1]
+                head = code[:fm.start(1)] if fm else ""
+                if fm and base not in CPP_NOT_FUNC and "=" not in head and not (base.isupper() and not head.strip()) \
+                        and not re.match(r"^\s*(return|else|throw|delete|co_return|goto|using|typedef)\b", code):
+                    is_decl = st.endswith(";") and st.count("(") == st.count(")")
+                    in_type = bool(scope) and scope[-1][0] == "type"
+                    if not is_decl or in_type:
+                        end = i + 1 if is_decl else _brace_end(lines, i, body=True)
+                        syms.append((i + 1, end, len(scope), _sig(raw), name))
+                    if not is_decl:
+                        pending = "fn"
+        for ch in code:
+            if ch == "{":
+                depth += 1
+                scope.append((pending or "blk", depth))
+                pending = None
+            elif ch == "}":
+                if scope and scope[-1][1] == depth:
+                    scope.pop()
+                depth = max(0, depth - 1)
+            elif ch == ";" and pending in ("fn", "type", "enum", "ns") and "{" not in code:
+                pending = None          # it was a declaration after all (multi-line prototype, forward decl)
+    return syms
 
 
 def outline(p):
@@ -152,6 +213,8 @@ def outline(p):
         except Exception:
             pass
         return syms
+    if ext in CPP_EXT:
+        return outline_cpp(lines)
     pats = JS if ext in (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte") else GO if ext == ".go" else RS if ext == ".rs" else GEN
     stack = []   # (end, depth)
     in_type_group = False

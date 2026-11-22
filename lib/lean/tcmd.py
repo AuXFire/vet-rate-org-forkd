@@ -14,6 +14,7 @@ t -h         this help           RAW=1 t ...      unfiltered output"""
 def _short(cmd, d):
     """Display form: node_modules/.bin/vitest -> vitest, project-relative paths."""
     cmd = re.sub(r"\S*/node_modules/\.bin/(\S+)", r"\1", cmd)
+    cmd = re.sub(r"^\(test -f build/CMakeCache\.txt \|\| cmake [^)]*\) && cmake --build build -j \d+( && )?", "build + " if "ctest" in cmd else "cmake --build build", cmd)
     return cmd.replace(d + os.sep, "")
 
 
@@ -59,6 +60,8 @@ def _rerun(tst, failed):
     r, cmd = tst["runner"], tst["cmd"]
     if r == "pytest":
         return cmd + " --lf"
+    if r == "ctest":
+        return cmd + " --rerun-failed"
     if r == "jest":      # by name: jest's own --onlyFailures cache is overwritten by any direct run
         pats = sorted({re.escape(n.replace(" › ", " ")) for n in failed})
         return "%s -t %s" % (cmd, _q(["^(%s)$" % "|".join(pats)])) if pats else None
@@ -115,7 +118,7 @@ def t_main(args):
         rr = _rerun(tst, failed) if failed else None
         if rr:
             c, text = run.run_capture(rr, d)
-            if re.search(r"No failed test found|No tests found|no tests ran|0 tests? (ran|run)|testsuite: 0 tests|ran 0 tests", text, re.I):
+            if re.search(r"No failed test found|No tests found|No tests were found|no tests ran|0 tests? (ran|run)|testsuite: 0 tests|ran 0 tests", text, re.I):
                 c = 0           # runner couldn't select them (renamed/removed tests): fall through to the full suite
             if c != 0:
                 print("t: rerun %d failure(s) → %s\n%s" % (len(failed), _short(rr, d), text))

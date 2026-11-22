@@ -367,6 +367,8 @@ def quick_check(p):
                 c, out = util.sh(["node", "-e", TS_SYNTAX, tsmod, p], timeout=8)
                 return out.strip()[:1200] if c == 1 else ""
             return ""
+        if ext in (".cpp", ".cc", ".cxx", ".c"):
+            return _cpp_check(p)
         if ext == ".go" and shutil.which("gofmt"):
             c, out = util.sh(["gofmt", "-e", "-l", p], timeout=5)
             return out.strip()[:1500] if c else ""
@@ -398,6 +400,48 @@ def _find_typescript(d):
     c, out = util.sh(["npm", "root", "-g"], timeout=5) if shutil.which("npm") else (1, "")
     g = os.path.join(out.strip(), "typescript") if c == 0 else ""
     return g if g and os.path.isdir(g) else None
+
+
+def _cpp_check(p):
+    """Syntax-check one translation unit with the project's own flags (compile_commands.json), if it has an entry."""
+    import shlex
+    d = os.path.dirname(os.path.abspath(p))
+    cc = None
+    while True:
+        for cand in (os.path.join(d, "compile_commands.json"), os.path.join(d, "build", "compile_commands.json")):
+            if os.path.isfile(cand):
+                cc = cand
+                break
+        if cc or os.path.dirname(d) == d:
+            break
+        d = os.path.dirname(d)
+    if not cc:
+        return ""
+    try:
+        with open(cc) as f:
+            entries = json.load(f)
+    except Exception:
+        return ""
+    ent = next((e for e in entries if os.path.abspath(os.path.join(e.get("directory", ""), e.get("file", ""))) == os.path.abspath(p)), None)
+    if not ent:
+        return ""
+    args = ent.get("arguments") or shlex.split(ent.get("command", ""))
+    out, skip = [], False
+    for a in args:
+        if skip:
+            skip = False
+            continue
+        if a in ("-o", "-MF", "-MT", "-MQ"):
+            skip = True
+            continue
+        if a in ("-c", "-MD", "-MMD", "-MP"):
+            continue
+        out.append(a)
+    c, txt = util.sh(out + ["-fsyntax-only", "-fdiagnostics-color=never"], cwd=ent.get("directory") or None, timeout=12)
+    if c == 0:
+        return ""
+    errs = [l for l in txt.split("\n") if re.search(r":\d+:\d+: (fatal )?error:", l)]
+    return "\n".join(errs[:6])[:1500]
 
 
 def _first_err(out):

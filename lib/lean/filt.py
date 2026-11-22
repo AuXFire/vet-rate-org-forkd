@@ -496,7 +496,16 @@ def render_tests(res, cwd, prev=None, elapsed=None):
                 out.append("   " + msg)
         detail = f["detail"]
         if len(fs) > 1 and all(len(x["detail"]) == len(detail) for x in fs):
-            detail = [merge_texts([x["detail"][i] for x in fs]) or detail[i] for i in range(len(detail))]
+            merged = [merge_texts([x["detail"][i] for x in fs]) for i in range(len(detail))]
+            if all(m is not None for m in merged):
+                detail = merged
+            else:
+                # Same message, different details: showing only the first one's would misattribute it.
+                detail = ["%s: %s" % (x["name"], x["detail"][0][:160]) for x in fs[:8] if x["detail"]]
+                if len(fs) > 8:
+                    detail.append("… +%d more (log)" % (len(fs) - 8))
+        elif len(fs) > 1:
+            detail = ["%s: %s" % (x["name"], x["detail"][0][:160]) for x in fs[:8] if x["detail"]]
         diff = [d for d in detail if d[:1] in "+-" and not d.startswith(("- Expected", "+ Received"))]
         if diff and all(d[1:].strip().rstrip(",") in msg for d in diff):
             detail = [d for d in detail if d not in diff and not d.startswith(("- Expected", "+ Received"))]   # values already in msg
@@ -533,6 +542,8 @@ def test_result(text, cmd=""):
         hint = ["junit"]
     elif "rspec" in cmd:
         hint = ["rspec"]
+    elif "ctest" in cmd:
+        hint = ["ctest"]
     for name in hint + [n for n in parse.TEST_PARSERS if n not in hint]:
         try:
             r = parse.TEST_PARSERS[name](text)

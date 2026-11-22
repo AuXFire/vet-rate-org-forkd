@@ -4,7 +4,7 @@ import os
 import shutil
 from . import util
 
-MANIFESTS = ("pom.xml", "build.gradle", "build.gradle.kts", "Gemfile", "Rakefile", "package.json", "pyproject.toml", "setup.py", "setup.cfg", "pytest.ini", "tox.ini", "go.mod", "Cargo.toml", "requirements.txt", "conftest.py")
+MANIFESTS = ("CMakeLists.txt", "pom.xml", "build.gradle", "build.gradle.kts", "Gemfile", "Rakefile", "package.json", "pyproject.toml", "setup.py", "setup.cfg", "pytest.ini", "tox.ini", "go.mod", "Cargo.toml", "requirements.txt", "conftest.py")
 
 
 def _has(d, *names):
@@ -139,6 +139,14 @@ def detect(cwd=None):
         info["checks"].append({"name": "go vet", "cmd": "go vet ./..."})
         if _has(d, ".golangci.yml", ".golangci.yaml", ".golangci.toml") and shutil.which("golangci-lint"):
             info["checks"].append({"name": "golangci-lint", "cmd": "golangci-lint run"})
+    if _has(d, "CMakeLists.txt") and shutil.which("cmake"):
+        info["stacks"].append("cpp")
+        jobs = max(2, os.cpu_count() or 2)
+        gen = " -G Ninja" if shutil.which("ninja") else ""
+        conf = "(test -f build/CMakeCache.txt || cmake -S . -B build%s -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >/dev/null)" % gen
+        build = "%s && cmake --build build -j %d" % (conf, jobs)
+        info["tests"].append({"runner": "ctest", "cmd": build + " && ctest --test-dir build --output-on-failure"})
+        info["checks"].append({"name": "build", "cmd": build})
     if _has(d, "Cargo.toml"):
         info["stacks"].append("rust")
         info["tests"].append({"runner": "cargo", "cmd": "cargo test"})

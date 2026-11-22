@@ -33,12 +33,13 @@ PY_FRAME = re.compile(r"^(\S+\.py):(\d+): ?(\w*)")
 
 
 def pytest(text):
-    if not re.search(r"(=+ (FAILURES|ERRORS|short test summary info) =+|=+ .*\b(passed|failed|error|no tests ran)\b.* in [\d.]+s)", text):
+    if not re.search(r"(=+ (FAILURES|ERRORS|short test summary info) =+|=+ .*\b(passed|failed|error|no tests ran)\b.* in [\d.]+s|^\d+ (passed|failed|errors?|skipped)\b.* in [\d.]+s)", text, re.M):
         return None
     lines = text.split("\n")
     res = {"runner": "pytest", "counts": {}, "failures": []}
     for l in reversed(lines):
-        if re.match(r"^=+ .* in [\d.]+s", l) or re.match(r"^=+ no tests ran", l):
+        # decorated ("==== 1 failed, 9 passed in 0.5s ====") or, with -q, bare ("1 failed, 9 passed in 0.5s")
+        if re.match(r"^=+ .* in [\d.]+s", l) or re.match(r"^=+ no tests ran", l) or re.match(r"^\d+ (passed|failed|errors?|skipped|deselected|xfailed|xpassed|warnings?)\b.* in [\d.]+s", l):
             res["counts"] = _counts(l)
             break
     # sections
@@ -529,8 +530,68 @@ def minitest(text):
     return res
 
 
+# ---------------- ctest (CMake); failure lines from GoogleTest, doctest, Catch2 or gcc-style harnesses
+CT_RESULT = re.compile(r"^\s*\d+/\d+ Test\s+#\d+: (.+?) \.*\s*(Passed|\*\*\*\S.*?|\S.*?\*\*\*\S*)\s+[\d.]+ sec")
+CT_FAIL = re.compile(r"^(?P<f>[^\s:][^:]*\.(?:c|cc|cpp|cxx|h|hpp|hh|inl)):(?P<l>\d+):(?:\d+:)?\s*(?:(?:fatal )?error|ERROR|FATAL ERROR|FAILED|Failure)\b:?\s*(?P<m>.*)$")
+
+
+def ctest(text):
+    m = re.search(r"(\d+)% tests passed, (\d+) tests failed out of (\d+)", text)
+    if not m:
+        return None
+    failed, total = int(m.group(2)), int(m.group(3))
+    res = {"runner": "ctest", "counts": {"failed": failed, "passed": total - failed}, "failures": []}
+    sections, cur = {}, None
+    for l in text.split("\n"):
+        r = CT_RESULT.match(l)
+        if r:
+            cur = None if r.group(2) == "Passed" else r.group(1)
+            if cur:
+                sections[cur] = {"status": r.group(2).strip("* "), "lines": []}
+            continue
+        if re.match(r"^\s+Start\s+\d+: ", l) or re.match(r"^\d+% tests passed", l):
+            cur = None
+            continue
+        if cur:
+            sections[cur]["lines"].append(l)
+    for name, sec in sections.items():
+        lines, found, i = sec["lines"], 0, 0
+        while i < len(lines):
+            fm = CT_FAIL.match(lines[i].strip())
+            if not fm:
+                i += 1
+                continue
+            msg, case = fm.group("m").strip(), None
+            cm = re.match(r"^\[([^\]]+)\]\s*(.*)$", msg)          # "[suite.case] CHECK(...) failed"
+            if cm:
+                case, msg = cm.group(1), cm.group(2)
+            detail, j = [], i + 1
+            while j < len(lines) and lines[j].strip() and not CT_FAIL.match(lines[j].strip()) and len(detail) < 6 \
+                    and not re.match(r"^\[\s*(FAILED|RUN|OK|-+|=+)\s*\]|^={5,}|^-{5,}|^\d+ (test )?(cases?|tests?|checks?|assertions?)\b", lines[j].strip()):
+                detail.append(lines[j].strip())
+                j += 1
+            if not msg and detail:
+                msg = detail.pop(0)
+            if case is None:                                       # gtest names the case on a later "[  FAILED  ] Suite.Case" line
+                for k in range(j, min(len(lines), j + 12)):
+                    gm = re.match(r"^\[\s*FAILED\s*\]\s+(\S+)", lines[k].strip())
+                    if gm:
+                        case = gm.group(1)
+                        break
+            res["failures"].append(_fail(case or name, msg, (fm.group("f"), int(fm.group("l"))), detail))
+            found += 1
+            i = j
+        if not found:
+            tail = [x.strip() for x in lines if x.strip()][-6:]
+            res["failures"].append(_fail(name, sec["status"] or "failed", None, tail))
+    nr = re.findall(r"^\s*\d+ - (\S+) \(Not Run\)", text, re.M)
+    if nr:
+        res["note"] = "not run: " + ", ".join(nr[:8])
+    return res
+
+
 TEST_PARSERS = {"pytest": pytest, "jest": jest, "vitest": vitest, "go": gotest, "cargo": cargo_test,
-                "junit": junit, "rspec": rspec, "minitest": minitest}
+                "junit": junit, "rspec": rspec, "minitest": minitest, "ctest": ctest}
 
 
 # ---------------------------------------------------------------- diagnostics

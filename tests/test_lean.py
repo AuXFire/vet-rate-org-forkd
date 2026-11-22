@@ -55,6 +55,62 @@ class KeyFacts(unittest.TestCase):
                 self.assertLessEqual(len(out), len(raw) * ratio, "%s: %d -> %d chars\n%s" % (f, len(raw), len(out), out))
 
 
+class QuietAndCtest(unittest.TestCase):
+    def test_pytest_quiet_summary_keeps_all_counts(self):
+        raw = ("F.........                                                               [100%]\n"
+               "=================================== FAILURES ===================================\n"
+               "__________________________________ test_roads __________________________________\n\n"
+               "    def test_roads():\n>       assert 15 <= 2.5\nE       assert 15 <= 2.5\n\n"
+               "tests/test_data.py:78: AssertionError\n"
+               "=========================== short test summary info ============================\n"
+               "FAILED tests/test_data.py::test_roads - assert 15 <= 2.5\n"
+               "1 failed, 9 passed in 0.56s\n")
+        out, _ = filt.filter_output("python3 -m pytest -q", raw * 2, tempfile.mkdtemp(), code=1)
+        self.assertIn("1 failed, 9 passed", out)
+        self.assertIn("test_roads", out)
+
+    def test_ctest_failures_from_harness_gtest_and_crashes(self):
+        raw = ("Test project /w/build\n"
+               "    Start 1: heat\n1/4 Test #1: heat .............................   Passed    0.00 sec\n"
+               "    Start 2: traffic\n2/4 Test #2: traffic ..........................***Failed    0.02 sec\n"
+               "/w/Tests/test_systems.cpp:104: error: [traffic.no_overlap] CHECK(worstGap > 0.0f) failed\n"
+               "4 cases, 55 checks, 1 failed\n\n"
+               "    Start 3: gt\n3/4 Test #3: gt ...............................***Failed    0.01 sec\n"
+               "[ RUN      ] Calc.Adds\n/w/t/calc_test.cc:12: Failure\nExpected equality of these values:\n  add(6, 1)\n    Which is: 8\n  7\n"
+               "[  FAILED  ] Calc.Adds (0 ms)\n\n"
+               "    Start 4: boom\n4/4 Test #4: boom .............................Subprocess aborted***Exception:   0.10 sec\n"
+               "terminate called without an active exception\n\n"
+               "25% tests passed, 3 tests failed out of 4\n\nTotal Test time (real) =   0.14 sec\n\n"
+               "The following tests FAILED:\n\t  2 - traffic (Failed)\n\t  3 - gt (Failed)\n\t  4 - boom (Subprocess aborted)\n"
+               "Errors while running CTest\n")
+        out, kind = filt.filter_output("cmake --build build && ctest --test-dir build --output-on-failure", raw, tempfile.mkdtemp(), code=8)
+        self.assertEqual(kind, "test")
+        for fact in ["3 failed, 1 passed", "traffic.no_overlap", "CHECK(worstGap > 0.0f) failed", "test_systems.cpp:104",
+                     "Calc.Adds", "calc_test.cc:12", "Which is: 8", "boom", "terminate called without an active exception"]:
+            self.assertIn(fact, out, out)
+        self.assertNotIn("4 cases, 55 checks", out)       # the harness's own summary is not failure detail
+
+    def test_grouped_failures_with_different_details_name_each_one(self):
+        raw = "Test project /w/build\n" + "".join(
+            "    Start %d: %s\n%d/3 Test #%d: %s ...........***Failed    0.00 sec\nno tests in suite '%s'\n\n" % (i, n, i, i, n, n)
+            for i, n in enumerate(["traffic", "driver", "sim"], 1)) + "0% tests passed, 3 tests failed out of 3\n"
+        out, _ = filt.filter_output("ctest --test-dir build", raw, tempfile.mkdtemp(), code=8)
+        for n in ("traffic", "driver", "sim"):
+            self.assertIn("%s: no tests in suite '%s'" % (n, n), out, out)
+
+    def test_cpp_outline_scopes(self):
+        p = os.path.join(tempfile.mkdtemp(), "a.h")
+        with open(p, "w") as f:
+            f.write("#pragma once\nnamespace ut {\n\nstruct Vec2 {\n    float x = 0.0f;\n    Vec2 operator+(Vec2 o) const { return {x + o.x, 0}; }\n"
+                    "    float length() const;\n};\n\nclass GAME_API Heat : public Base {\npublic:\n    void update(float dt,\n                Vec2 pos);\n"
+                    "    int level() const { if (a) { return call(1); } return level_; }\nprivate:\n    int level_ = 0;\n};\n\n"
+                    "inline float clampf(float v, float lo, float hi) { return v < lo ? lo : v; }\n\nenum class Crime : uint8_t { A, B };\n\n}  // namespace ut\n"
+                    "void ut::Heat::update(float dt, Vec2 pos)\n{\n    for (int i = 0; i < 3; ++i) { step(i); }\n}\n")
+        got = [(s[4], s[0], s[1], s[2]) for s in nav.outline(p)]
+        self.assertEqual(got, [("ut", 2, 23, 0), ("Vec2", 4, 8, 1), ("operator+", 6, 6, 2), ("length", 7, 7, 2), ("Heat", 10, 17, 1),
+                               ("update", 12, 13, 2), ("level", 14, 14, 2), ("clampf", 19, 19, 1), ("Crime", 21, 21, 1), ("ut::Heat::update", 24, 27, 0)])
+
+
 class Diagnostics(unittest.TestCase):
     def test_eslint(self):
         d = parse.diagnostics(fx("eslint.txt"))
